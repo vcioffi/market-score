@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "PricePoint": {
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "open": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High"
+        },
+        "low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Low"
+        },
+        "close": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Close"
+        },
+        "volume": {
+          "default": 0,
+          "title": "Volume",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "title": "PricePoint",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "ticker": {
+      "title": "Ticker",
+      "type": "string"
+    },
+    "company_name": {
+      "title": "Company Name",
+      "type": "string"
+    },
+    "sector": {
+      "title": "Sector",
+      "type": "string"
+    },
+    "industry": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Industry"
+    },
+    "quant_summary": {
+      "title": "Quant Summary",
+      "type": "string"
+    },
+    "qualitative_summary": {
+      "title": "Qualitative Summary",
+      "type": "string"
+    },
+    "key_positive_factors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Key Positive Factors",
+      "type": "array"
+    },
+    "key_negative_factors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Key Negative Factors",
+      "type": "array"
+    },
+    "news_sentiment_score": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "News Sentiment Score",
+      "type": "number"
+    },
+    "risk_score": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Risk Score",
+      "type": "number"
+    },
+    "benefit_score": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Benefit Score",
+      "type": "number"
+    },
+    "confidence_score": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Confidence Score",
+      "type": "number"
+    },
+    "investment_view": {
+      "title": "Investment View",
+      "type": "string"
+    },
+    "time_horizon": {
+      "title": "Time Horizon",
+      "type": "string"
+    },
+    "monitoring_triggers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Monitoring Triggers",
+      "type": "array"
+    },
+    "short_advice": {
+      "title": "Short Advice",
+      "type": "string"
+    },
+    "sources_used": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Sources Used",
+      "type": "array"
+    },
+    "quant_metrics": {
+      "title": "Quant Metrics",
+      "type": "object"
+    },
+    "fundamentals": {
+      "title": "Fundamentals",
+      "type": "object"
+    },
+    "price_history": {
+      "items": {
+        "$ref": "#/$defs/PricePoint"
+      },
+      "title": "Price History",
+      "type": "array"
+    },
+    "timestamp": {
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticker",
+    "company_name",
+    "sector",
+    "quant_summary",
+    "qualitative_summary",
+    "news_sentiment_score",
+    "risk_score",
+    "benefit_score",
+    "confidence_score",
+    "investment_view",
+    "time_horizon",
+    "short_advice"
+  ],
+  "title": "TickerAnalysis",
+  "type": "object"
+}

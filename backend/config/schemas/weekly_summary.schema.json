@@ -1,0 +1,228 @@
+{
+  "$defs": {
+    "BasketItem": {
+      "properties": {
+        "ticker": {
+          "title": "Ticker",
+          "type": "string"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "number"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticker",
+        "weight",
+        "rationale"
+      ],
+      "title": "BasketItem",
+      "type": "object"
+    },
+    "RankingEntry": {
+      "properties": {
+        "ticker": {
+          "title": "Ticker",
+          "type": "string"
+        },
+        "company_name": {
+          "title": "Company Name",
+          "type": "string"
+        },
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "benefit_score": {
+          "title": "Benefit Score",
+          "type": "number"
+        },
+        "risk_score": {
+          "title": "Risk Score",
+          "type": "number"
+        },
+        "confidence_score": {
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "news_sentiment_score": {
+          "title": "News Sentiment Score",
+          "type": "number"
+        },
+        "composite_score": {
+          "title": "Composite Score",
+          "type": "number"
+        },
+        "short_advice": {
+          "title": "Short Advice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticker",
+        "company_name",
+        "sector",
+        "benefit_score",
+        "risk_score",
+        "confidence_score",
+        "news_sentiment_score",
+        "composite_score",
+        "short_advice"
+      ],
+      "title": "RankingEntry",
+      "type": "object"
+    },
+    "SectorCluster": {
+      "properties": {
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "average_composite_score": {
+          "title": "Average Composite Score",
+          "type": "number"
+        },
+        "average_risk_score": {
+          "title": "Average Risk Score",
+          "type": "number"
+        },
+        "symbols": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Symbols",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sector",
+        "average_composite_score",
+        "average_risk_score",
+        "symbols"
+      ],
+      "title": "SectorCluster",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "run_date": {
+      "title": "Run Date",
+      "type": "string"
+    },
+    "ranking": {
+      "items": {
+        "$ref": "#/$defs/RankingEntry"
+      },
+      "title": "Ranking",
+      "type": "array"
+    },
+    "top_tickers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Top Tickers",
+      "type": "array"
+    },
+    "worst_tickers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Worst Tickers",
+      "type": "array"
+    },
+    "recommended_basket": {
+      "items": {
+        "$ref": "#/$defs/BasketItem"
+      },
+      "title": "Recommended Basket",
+      "type": "array"
+    },
+    "basket_rationale": {
+      "title": "Basket Rationale",
+      "type": "string"
+    },
+    "sector_clusters": {
+      "items": {
+        "$ref": "#/$defs/SectorCluster"
+      },
+      "title": "Sector Clusters",
+      "type": "array"
+    },
+    "competitive_relationships": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Competitive Relationships",
+      "type": "array"
+    },
+    "supply_chain_links": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Supply Chain Links",
+      "type": "array"
+    },
+    "scenario_signals": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Scenario Signals",
+      "type": "array"
+    },
+    "macro_themes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Macro Themes",
+      "type": "array"
+    },
+    "watchlist": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Watchlist",
+      "type": "array"
+    },
+    "systemic_risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Systemic Risks",
+      "type": "array"
+    },
+    "llm_commentary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Llm Commentary"
+    },
+    "generated_at": {
+      "title": "Generated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_date",
+    "ranking",
+    "top_tickers",
+    "worst_tickers",
+    "recommended_basket",
+    "basket_rationale",
+    "sector_clusters",
+    "macro_themes",
+    "watchlist",
+    "systemic_risks"
+  ],
+  "title": "WeeklySummary",
+  "type": "object"
+}

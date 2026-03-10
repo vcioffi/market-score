@@ -1,0 +1,38 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.claude/
+
+# Editor and OS noise
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/.test_tmp/
+backend/pytest_tmp_local/
+backend/tmp*/
+
+# Node
+webapp/node_modules/
+webapp/dist/
+
+# Generated data and runtime artifacts
+backend/data/raw/cache/
+backend/data/raw/*/market_data/
+backend/data/raw/*/fundamentals/
+backend/data/processed/openai_batches_registry.json
+backend/data/processed/*/metrics/
+backend/data/processed/*/news/
+backend/data/processed/*/llm/
+backend/data/outputs/
+
+# Internal notes not intended for the public repository
+Istruzioni Progetto.txt

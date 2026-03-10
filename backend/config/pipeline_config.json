@@ -1,0 +1,22 @@
+{
+    "benchmark_symbol":  "SPY",
+    "history_period":  "3y",
+    "history_interval":  "1d",
+    "max_tickers_per_run":  100,
+    "max_company_news":  5,
+    "max_sector_news":  5,
+    "news_window_days":  30,
+    "openai":  {
+                   "use_batch":  true,
+                   "completion_window":  "24h",
+                   "ticker_model":  "gpt-5-mini",
+                   "weekly_model":  "gpt-5-mini",
+                   "ticker_max_completion_tokens":  2200,
+                   "weekly_max_completion_tokens":  2600
+               },
+    "storage":  {
+                    "raw":  "backend/data/raw",
+                    "processed":  "backend/data/processed",
+                    "outputs":  "backend/data/outputs"
+                }
+}
