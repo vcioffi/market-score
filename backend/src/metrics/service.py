@@ -17,7 +17,8 @@ def build_metrics_bundle(
         benchmark_history=benchmark_history,
         risk_free_rate_annual=risk_free_rate_annual,
     )
-    fundamentals = normalize_fundamentals(fundamentals_raw)
+    current_price = quant.get("latest_close")
+    fundamentals = normalize_fundamentals(fundamentals_raw, current_price=current_price)
     return {
         "quant": quant,
         "fundamentals": fundamentals,

@@ -123,6 +123,16 @@ class MarketDataClient:
             "forward_pe": info.get("forwardPE"),
             "free_cashflow": info.get("freeCashflow"),
             "operating_cashflow": info.get("operatingCashflow"),
+            # Additional fundamental metrics for Graham-style analysis
+            "return_on_equity": info.get("returnOnEquity"),
+            "price_to_book": info.get("priceToBook"),
+            "current_ratio": info.get("currentRatio"),
+            "quick_ratio": info.get("quickRatio"),
+            "book_value": info.get("bookValue"),
+            "trailing_eps": info.get("trailingEps"),
+            "dividend_yield": info.get("dividendYield"),
+            "payout_ratio": info.get("payoutRatio"),
+            "ebitda_margins": info.get("ebitdaMargins"),
         }
 
     def fetch_fundamentals(self, symbol: str, force_refresh: bool = False, cache_ttl_hours: int = 72) -> dict:

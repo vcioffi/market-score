@@ -6,8 +6,114 @@ import { LoadingState } from "../components/LoadingState";
 import { RankingTable } from "../components/RankingTable";
 import { ScoreCard } from "../components/ScoreCard";
 import { TickerSearch } from "../components/TickerSearch";
-import { getTickers, getWeeklySummaryLatest } from "../services/api";
-import type { TickerLight, WeeklySummary } from "../types/api";
+import { getMacroLatest, getTickers, getWeeklySummaryLatest } from "../services/api";
+import type { MacroAnalysis, TickerLight, WeeklySummary } from "../types/api";
+
+function regimeBadgeClass(regime: string): string {
+  if (regime === "risk-on") return "badge badge-positive";
+  if (regime === "risk-off") return "badge badge-negative";
+  return "badge badge-neutral";
+}
+
+function fmtPct(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
+}
+
+function fmtVal(v: number | null | undefined, decimals = 2): string {
+  if (v == null) return "—";
+  return v.toFixed(decimals);
+}
+
+function MacroPanel({ macro }: { macro: MacroAnalysis }) {
+  const coreSymbols = ["^VIX", "^GSPC", "^IXIC", "^TNX", "DX-Y.NYB", "GC=F", "CL=F"];
+  const coreIndicators = macro.indicators.filter((i) => coreSymbols.includes(i.symbol));
+
+  const sectorEntries = Object.entries(macro.sector_performance).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section className="panel macro-panel">
+      <div className="panel-header">
+        <h3>Macro Analysis</h3>
+        <span className={regimeBadgeClass(macro.macro_regime)}>{macro.macro_regime}</span>
+      </div>
+
+      <div className="macro-scores-row">
+        <ScoreCard label="Macro Score" value={macro.macro_score.toFixed(1)} tone={macro.macro_score >= 55 ? "positive" : macro.macro_score >= 40 ? "neutral" : "warning"} />
+        <ScoreCard label="Breadth" value={macro.market_breadth} tone={macro.market_breadth === "expanding" ? "positive" : macro.market_breadth === "contracting" ? "warning" : "neutral"} />
+        {macro.vix_level != null && (
+          <ScoreCard label="VIX" value={macro.vix_level.toFixed(1)} tone={macro.vix_level < 15 ? "positive" : macro.vix_level < 25 ? "neutral" : "warning"} />
+        )}
+        {macro.yield_curve_spread != null && (
+          <ScoreCard label="Yield Curve" value={`${macro.yield_curve_spread >= 0 ? "+" : ""}${macro.yield_curve_spread.toFixed(2)}pp`} tone={macro.yield_curve_spread >= 0.5 ? "positive" : macro.yield_curve_spread >= 0 ? "neutral" : "warning"} />
+        )}
+      </div>
+
+      {coreIndicators.length > 0 && (
+        <div className="macro-indicators-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Indicator</th>
+                <th>Value</th>
+                <th>1D</th>
+                <th>1M</th>
+                <th>3M</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coreIndicators.map((ind) => (
+                <tr key={ind.symbol}>
+                  <td>{ind.name}</td>
+                  <td>{fmtVal(ind.current_value)}</td>
+                  <td className={ind.change_1d != null && ind.change_1d >= 0 ? "positive" : "negative"}>{fmtPct(ind.change_1d)}</td>
+                  <td className={ind.change_1m != null && ind.change_1m >= 0 ? "positive" : "negative"}>{fmtPct(ind.change_1m)}</td>
+                  <td className={ind.change_3m != null && ind.change_3m >= 0 ? "positive" : "negative"}>{fmtPct(ind.change_3m)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {sectorEntries.length > 0 && (
+        <div className="macro-sector-perf">
+          <h4>Sector Performance (1M)</h4>
+          <div className="sector-perf-grid">
+            {sectorEntries.map(([sector, perf]) => (
+              <div key={sector} className={`sector-perf-item ${perf >= 0 ? "positive" : "negative"}`}>
+                <span className="sector-name">{sector}</span>
+                <span className="sector-value">{perf >= 0 ? "+" : ""}{perf.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="macro-themes-risks">
+        <div>
+          <h4>Key Themes</h4>
+          <ul className="bullet-list">
+            {macro.key_macro_themes.map((t) => <li key={t}>{t}</li>)}
+          </ul>
+        </div>
+        <div>
+          <h4>Macro Risks</h4>
+          <ul className="bullet-list">
+            {macro.macro_risks.map((r) => <li key={r}>{r}</li>)}
+          </ul>
+        </div>
+      </div>
+
+      {macro.macro_commentary && (
+        <div className="macro-commentary">
+          <h4>Commentary</h4>
+          <p className="muted">{macro.macro_commentary}</p>
+        </div>
+      )}
+    </section>
+  );
+}
 
 interface DashboardPageProps {
   onRunDateChange: (runDate: string | undefined) => void;
@@ -15,6 +121,7 @@ interface DashboardPageProps {
 
 export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
+  const [macro, setMacro] = useState<MacroAnalysis | null>(null);
   const [tickers, setTickers] = useState<TickerLight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +140,13 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
         setSummary(weekly);
         setTickers(tickerRes.tickers);
         onRunDateChange(weekly.run_date);
+        // Macro is optional — don't fail the whole dashboard if not available
+        try {
+          const macroData = await getMacroLatest();
+          if (mounted) setMacro(macroData);
+        } catch {
+          // macro analysis not yet generated for this run
+        }
       } catch (loadError) {
         if (!mounted) {
           return;
@@ -150,6 +264,8 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
           </div>
         </section>
       </div>
+
+      {macro && <MacroPanel macro={macro} />}
 
       <section className="panel">
         <div className="panel-header">

@@ -19,6 +19,18 @@ export interface PricePoint {
   volume: number;
 }
 
+export interface FundamentalAnalysis {
+  moat_assessment: string;
+  management_quality: string;
+  growth_prospects: string;
+  financial_health_summary: string;
+  fair_value_assessment: string;
+  fundamental_score: number;
+  fundamental_verdict: "undervalued" | "fairly_valued" | "overvalued" | string;
+  key_strengths: string[];
+  key_concerns: string[];
+}
+
 export interface TickerAnalysis {
   ticker: string;
   company_name: string;
@@ -39,6 +51,7 @@ export interface TickerAnalysis {
   sources_used: string[];
   quant_metrics: Record<string, unknown>;
   fundamentals: Record<string, unknown>;
+  fundamental_analysis?: FundamentalAnalysis | null;
   price_history: PricePoint[];
   timestamp: string;
 }
@@ -83,6 +96,57 @@ export interface WeeklySummary {
   watchlist: string[];
   systemic_risks: string[];
   llm_commentary?: string | null;
+  generated_at: string;
+}
+
+export interface LiveQuote {
+  symbol: string;
+  period: string;
+  current_price: number | null;
+  change_1d: number | null;
+  change_1m: number | null;
+  change_3m: number | null;
+  price_history: PricePoint[];
+}
+
+export interface NewsArticle {
+  title: string;
+  url: string;
+  source: string;
+  published_at: string | null;
+  summary: string;
+}
+
+export interface LiveNews {
+  symbol: string;
+  articles: NewsArticle[];
+}
+
+export interface MacroIndicator {
+  symbol: string;
+  name: string;
+  category: string;
+  current_value: number | null;
+  change_1d: number | null;
+  change_1m: number | null;
+  change_3m: number | null;
+}
+
+export interface MacroAnalysis {
+  run_date: string;
+  macro_regime: string;
+  market_breadth: string;
+  key_macro_themes: string[];
+  macro_risks: string[];
+  sector_rotation_signal: string;
+  yield_curve_interpretation: string;
+  dollar_impact: string;
+  macro_commentary: string;
+  macro_score: number;
+  indicators: MacroIndicator[];
+  yield_curve_spread: number | null;
+  vix_level: number | null;
+  sector_performance: Record<string, number>;
   generated_at: string;
 }
 

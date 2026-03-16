@@ -16,6 +16,8 @@ from src.llm.batch import (
 )
 from src.llm.fallback import build_fallback_ticker_analysis, parse_json_from_model_output
 from src.llm.prompts import (
+    build_macro_system_prompt,
+    build_macro_user_prompt,
     build_ticker_system_prompt,
     build_ticker_user_prompt,
     build_weekly_commentary_prompt,
@@ -23,7 +25,7 @@ from src.llm.prompts import (
     build_weekly_user_prompt,
 )
 from src.llm.registry import OpenAIBatchRegistry, utc_now_iso
-from src.llm.schemas import TickerAnalysis, TickerAnalysisLLM, WeeklyLLMCommentary, WeeklySummary
+from src.llm.schemas import MacroAnalysis, MacroAnalysisLLM, TickerAnalysis, TickerAnalysisLLM, WeeklyLLMCommentary, WeeklySummary
 from src.tickers.models import TickerProfile
 from src.utils.logging import get_logger
 
@@ -79,9 +81,20 @@ class TickerLLMInput:
             "fwd_pe": r(fund.get("forward_pe")),
             "rev_gr": r(fund.get("revenue_growth")),
             "op_margin": r(fund.get("operating_margin")),
+            "ebitda_margin": r(fund.get("ebitda_margin")),
             "eps_gr": r(fund.get("eps_growth")),
+            "eps": r(fund.get("trailing_eps")),
             "d_e": r(fund.get("debt_to_equity")),
             "mcap_b": r((fund.get("market_cap") or 0) / 1e9, 1),
+            # Graham-style metrics
+            "roe": r(fund.get("roe")),
+            "pb": r(fund.get("pb_ratio")),
+            "curr_ratio": r(fund.get("current_ratio")),
+            "quick_ratio": r(fund.get("quick_ratio")),
+            "bvps": r(fund.get("book_value_per_share")),
+            "graham_num": r(fund.get("graham_number")),
+            "mos_pct": r(fund.get("margin_of_safety")),
+            "div_yield": r(fund.get("dividend_yield")),
         }
 
         # 3 articles max, short title+summary only
@@ -152,6 +165,7 @@ class TickerLLMAnalysisEngine:
             sources_used=llm_model.sources_used,
             quant_metrics=entry.metrics_payload.get("quant", {}),
             fundamentals=entry.metrics_payload.get("fundamentals", {}),
+            fundamental_analysis=llm_model.fundamental_analysis,
             price_history=entry.metrics_payload.get("price_history", []),
             # timestamp uses TickerAnalysis.default_factory (pipeline sets it, not the LLM)
         )
@@ -563,3 +577,204 @@ class WeeklyLLMEngine:
             self.registry.update(batch_id, status="output_download_failed", error=str(exc))
             return None, {**metadata, "status": "output_download_failed", "error": str(exc)}
 
+
+class MacroLLMEngine:
+    """Generate macroeconomic analysis via OpenAI direct mode, with deterministic fallback."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    @staticmethod
+    def _compact_macro_payload(macro_context: dict) -> dict:
+        """Extract the data the LLM needs to write its analysis."""
+        indicators = macro_context.get("indicators", [])
+
+        def _ind(symbol: str) -> dict | None:
+            return next((i for i in indicators if i.get("symbol") == symbol), None)
+
+        def _r(v, d=2):
+            try:
+                return round(float(v), d) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        core_symbols = ["^VIX", "^GSPC", "^IXIC", "^RUT", "^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "TLT", "HYG"]
+        core_inds = []
+        for sym in core_symbols:
+            ind = _ind(sym)
+            if ind:
+                core_inds.append({
+                    "sym": sym,
+                    "name": ind.get("name", ""),
+                    "val": _r(ind.get("current_value")),
+                    "1d": _r(ind.get("change_1d"), 4),
+                    "1m": _r(ind.get("change_1m"), 4),
+                    "3m": _r(ind.get("change_3m"), 4),
+                })
+
+        return {
+            "run_date": macro_context.get("run_date"),
+            "vix": _r(macro_context.get("vix_level")),
+            "yield_curve_spread": _r(macro_context.get("yield_curve_spread"), 3),
+            "indicators": core_inds,
+            "sector_perf_1m": macro_context.get("sector_performance", {}),
+        }
+
+    @staticmethod
+    def _deterministic_fallback(macro_context: dict) -> MacroAnalysis:
+        """Build a rule-based macro analysis without calling OpenAI."""
+        vix = macro_context.get("vix_level")
+        spread = macro_context.get("yield_curve_spread")
+        sector_perf = macro_context.get("sector_performance", {})
+
+        # Regime from VIX
+        if vix is None:
+            macro_regime = "uncertain"
+            vix_text = "VIX data unavailable."
+        elif vix < 15:
+            macro_regime = "risk-on"
+            vix_text = f"VIX at {vix:.1f} signals low fear and a risk-on environment."
+        elif vix < 25:
+            macro_regime = "transitioning"
+            vix_text = f"VIX at {vix:.1f} indicates moderate uncertainty; regime is transitioning."
+        else:
+            macro_regime = "risk-off"
+            vix_text = f"VIX at {vix:.1f} signals elevated fear and a risk-off posture."
+
+        # Yield curve
+        if spread is None:
+            yc_interp = "Yield curve data unavailable."
+        elif spread < 0:
+            yc_interp = f"Yield curve inverted ({spread:+.2f}pp): historically a recessionary signal."
+        elif spread < 0.5:
+            yc_interp = f"Yield curve flat ({spread:+.2f}pp): limited growth premium from longer maturities."
+        else:
+            yc_interp = f"Yield curve positive ({spread:+.2f}pp): normal term structure, supportive of growth."
+
+        # Market breadth from sector performance
+        if sector_perf:
+            positive_sectors = sum(1 for v in sector_perf.values() if v > 0)
+            total = len(sector_perf)
+            ratio = positive_sectors / total if total else 0.5
+            if ratio >= 0.7:
+                breadth = "expanding"
+            elif ratio >= 0.4:
+                breadth = "mixed"
+            else:
+                breadth = "contracting"
+        else:
+            breadth = "mixed"
+
+        # Sector rotation: best/worst
+        if sector_perf:
+            best = max(sector_perf, key=lambda k: sector_perf[k])
+            worst = min(sector_perf, key=lambda k: sector_perf[k])
+            rotation_signal = f"Leadership in {best} ({sector_perf[best]:+.1f}%); lagging in {worst} ({sector_perf[worst]:+.1f}%)."
+        else:
+            rotation_signal = "Sector rotation data unavailable."
+
+        # Macro score: base 50, adjust for VIX and yield curve
+        macro_score = 50.0
+        if vix is not None:
+            macro_score -= min(vix * 1.2, 30)
+            macro_score += max(0, (20 - vix) * 0.5)
+        if spread is not None and spread >= 0:
+            macro_score += min(spread * 5, 15)
+        if sector_perf:
+            avg_perf = sum(sector_perf.values()) / len(sector_perf)
+            macro_score += avg_perf * 0.5
+        macro_score = max(0.0, min(100.0, round(macro_score, 2)))
+
+        commentary = (
+            f"{vix_text} "
+            f"{yc_interp} "
+            f"Sector breadth is {breadth}. {rotation_signal} "
+            "This is a deterministic fallback analysis based on raw indicators — no LLM commentary available in dry-run mode."
+        )
+
+        return MacroAnalysis(
+            run_date=macro_context.get("run_date", ""),
+            macro_regime=macro_regime,
+            market_breadth=breadth,
+            key_macro_themes=[vix_text.rstrip("."), yc_interp.rstrip(".")],
+            macro_risks=[
+                "Elevated volatility" if (vix or 0) > 25 else "Monitor VIX for regime shift",
+                "Inverted yield curve" if (spread or 1) < 0 else "Monitor credit spreads",
+            ],
+            sector_rotation_signal=rotation_signal,
+            yield_curve_interpretation=yc_interp,
+            dollar_impact="Dollar impact analysis unavailable in dry-run mode.",
+            macro_commentary=commentary,
+            macro_score=macro_score,
+            indicators=macro_context.get("indicators", []),
+            yield_curve_spread=spread,
+            vix_level=vix,
+            sector_performance=sector_perf,
+        )
+
+    def generate_analysis(
+        self,
+        run_date: str,
+        macro_context: dict,
+        artifacts_dir: Path,
+    ) -> tuple[MacroAnalysis, dict]:
+        """Generate macro analysis. Returns (MacroAnalysis, metadata_dict)."""
+        if self.settings.dry_run or not self.settings.openai_api_key:
+            result = self._deterministic_fallback({**macro_context, "run_date": run_date})
+            return result, {"mode": "fallback"}
+
+        try:
+            manager = OpenAIDirectManager(api_key=str(self.settings.openai_api_key))
+        except Exception as exc:
+            LOGGER.warning("MacroLLMEngine: OpenAI init failed, using fallback: %s", exc)
+            result = self._deterministic_fallback({**macro_context, "run_date": run_date})
+            return result, {"mode": "fallback", "reason": "openai_init_failed", "error": str(exc)}
+
+        schema = MacroAnalysisLLM.model_json_schema()
+        compact_payload = self._compact_macro_payload(macro_context)
+        request = BatchRequest(
+            custom_id=f"{run_date}:macro-analysis",
+            model=self.settings.openai_model_weekly,
+            system_prompt=build_macro_system_prompt(),
+            user_prompt=build_macro_user_prompt(compact_payload),
+            json_schema_name="macro_analysis",
+            json_schema=schema,
+            max_completion_tokens=self.settings.openai_weekly_max_completion_tokens,
+        )
+
+        try:
+            response_payload = manager.create_chat_completion(request)
+            content = extract_chat_completion_content(response_payload)
+            payload = parse_json_from_model_output(content)
+            llm_model = MacroAnalysisLLM.model_validate(payload)
+        except (ValueError, ValidationError, json.JSONDecodeError) as exc:
+            LOGGER.warning("MacroLLMEngine: invalid model output: %s", exc)
+            return (
+                self._deterministic_fallback({**macro_context, "run_date": run_date}),
+                {"mode": "fallback", "reason": "invalid_model_output", "error": str(exc)},
+            )
+        except Exception as exc:
+            LOGGER.warning("MacroLLMEngine: request failed: %s", exc)
+            return (
+                self._deterministic_fallback({**macro_context, "run_date": run_date}),
+                {"mode": "fallback", "reason": "request_failed", "error": str(exc)},
+            )
+
+        # Merge LLM output with raw indicator data
+        result = MacroAnalysis(
+            run_date=run_date,
+            macro_regime=llm_model.macro_regime,
+            market_breadth=llm_model.market_breadth,
+            key_macro_themes=llm_model.key_macro_themes,
+            macro_risks=llm_model.macro_risks,
+            sector_rotation_signal=llm_model.sector_rotation_signal,
+            yield_curve_interpretation=llm_model.yield_curve_interpretation,
+            dollar_impact=llm_model.dollar_impact,
+            macro_commentary=llm_model.macro_commentary,
+            macro_score=llm_model.macro_score,
+            indicators=macro_context.get("indicators", []),
+            yield_curve_spread=macro_context.get("yield_curve_spread"),
+            vix_level=macro_context.get("vix_level"),
+            sector_performance=macro_context.get("sector_performance", {}),
+        )
+        return result, {"mode": "openai_direct", "status": "completed"}

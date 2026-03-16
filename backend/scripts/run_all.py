@@ -53,6 +53,11 @@ def main() -> None:
         action="store_true",
         help="Skip market data, metrics, and news pipelines — run only LLM analysis on saved data",
     )
+    parser.add_argument(
+        "--skip-macro",
+        action="store_true",
+        help="Skip the macroeconomic analysis pipeline",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -84,6 +89,7 @@ def main() -> None:
         symbols=symbols,
         skip_news=args.skip_news or args.llm_only,
         skip_market=args.llm_only,
+        skip_macro=args.skip_macro,
     )
     print(json.dumps(result, indent=2))
 

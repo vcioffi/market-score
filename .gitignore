@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 .claude/
+.devcontainer
+
+# Core dumps
+core.*
 
 # Editor and OS noise
 .vscode/

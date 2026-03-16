@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.config.settings import Settings
 from src.market_data.client import MarketDataClient
+from src.pipelines.macro_pipeline import MacroPipeline
 from src.pipelines.market_data_pipeline import MarketDataPipeline
 from src.pipelines.metrics_pipeline import MetricsPipeline
 from src.pipelines.news_pipeline import NewsPipeline
@@ -36,6 +37,7 @@ class FullPipeline:
         symbols: list[str] | None = None,
         skip_news: bool = False,
         skip_market: bool = False,
+        skip_macro: bool = False,
     ) -> dict:
         market_pipeline = MarketDataPipeline(
             settings=self.settings,
@@ -86,6 +88,13 @@ class FullPipeline:
         llm_result = llm_pipeline.run(run_date=run_date, wait_for_batch=wait_for_batch, symbols=symbols)
         weekly_result = weekly_pipeline.run(run_date=run_date, wait_for_batch=wait_for_batch)
 
+        if skip_macro:
+            LOGGER.info("Skipping macro pipeline (--skip-macro)")
+            macro_result: dict = {"skipped": True}
+        else:
+            macro_pipeline = MacroPipeline(settings=self.settings, storage=self.storage)
+            macro_result = macro_pipeline.run(run_date=run_date)
+
         return {
             "run_date": run_date,
             "symbols": symbols,
@@ -94,4 +103,5 @@ class FullPipeline:
             "news": news_result,
             "ticker_analysis": llm_result,
             "weekly_summary": weekly_result,
+            "macro": macro_result,
         }

@@ -114,6 +114,16 @@ class JsonStorage:
             [item for item in run_dir.glob("*.json") if item.name.lower() != "weekly_summary.json"]
         )
 
+    def save_macro_analysis(self, run_date: str, payload: dict) -> Path:
+        folder = self._run_dir(self.outputs_dir, run_date)
+        file_path = folder / "macro_analysis.json"
+        file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return file_path
+
+    def load_macro_analysis(self, run_date: str) -> dict:
+        file_path = self.outputs_dir / run_date / "macro_analysis.json"
+        return json.loads(file_path.read_text(encoding="utf-8"))
+
     def save_json(self, path: Path, payload: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.models import RunAnalysisRequest, RunSingleTickerRequest
 from src.config.settings import get_settings
 from src.market_data.client import MarketDataClient
+from src.news.yahoo_provider import YahooFinanceNewsProvider
+from src.pipelines.macro_pipeline import MacroPipeline
 from src.pipelines.market_data_pipeline import MarketDataPipeline
 from src.pipelines.metrics_pipeline import MetricsPipeline
 from src.pipelines.news_pipeline import NewsPipeline
@@ -149,6 +151,95 @@ def latest_weekly_summary() -> dict:
     if payload is None:
         raise HTTPException(status_code=500, detail="Weekly summary artifact is invalid")
     return payload
+
+
+@app.get("/api/macro/latest")
+def latest_macro_analysis(run_date: Optional[str] = None) -> dict:
+    storage = _build_storage()
+    selected_run = run_date or storage.latest_run_date()
+    if not selected_run:
+        raise HTTPException(status_code=404, detail="No run available")
+
+    path = settings.outputs_data_dir / selected_run / "macro_analysis.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Macro analysis not available for this run")
+
+    payload = _safe_load_json(storage, path)
+    if payload is None:
+        raise HTTPException(status_code=500, detail="Macro analysis artifact is invalid")
+    return payload
+
+
+@app.get("/api/live/quote/{symbol}")
+def live_quote(symbol: str, period: str = "3mo") -> dict:
+    """Return recent price history for any symbol via yfinance (no pipeline run needed)."""
+    symbol = symbol.upper()
+    client = MarketDataClient(settings.raw_data_dir)
+    try:
+        df = client.fetch_history(symbol=symbol, period=period, interval="1d", cache_ttl_hours=4)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Price data not available for {symbol}: {exc}") from exc
+
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No price data for {symbol}")
+
+    price_history = []
+    for date, row in df.iterrows():
+        price_history.append({
+            "date": str(date)[:10],
+            "open": round(float(row.get("Open", 0) or 0), 4),
+            "high": round(float(row.get("High", 0) or 0), 4),
+            "low": round(float(row.get("Low", 0) or 0), 4),
+            "close": round(float(row.get("Close", 0) or 0), 4),
+            "volume": int(row.get("Volume", 0) or 0),
+        })
+
+    closes = [p["close"] for p in price_history if p["close"]]
+    current_price = closes[-1] if closes else None
+
+    def _pct(current, prev):
+        if current and prev and prev != 0:
+            return round((current - prev) / abs(prev), 6)
+        return None
+
+    n = len(closes)
+    change_1d = _pct(closes[-1], closes[-2]) if n >= 2 else None
+    change_1m = _pct(closes[-1], closes[max(0, n - 22)]) if n >= 2 else None
+    change_3m = _pct(closes[-1], closes[max(0, n - 65)]) if n >= 2 else None
+
+    return {
+        "symbol": symbol,
+        "period": period,
+        "current_price": current_price,
+        "change_1d": change_1d,
+        "change_1m": change_1m,
+        "change_3m": change_3m,
+        "price_history": price_history,
+    }
+
+
+@app.get("/api/live/news/{symbol}")
+def live_news(symbol: str, limit: int = 15) -> dict:
+    """Return latest news articles for any symbol via yfinance (no pipeline run needed)."""
+    symbol = symbol.upper()
+    provider = YahooFinanceNewsProvider()
+    try:
+        articles = provider.fetch_company_news(symbol)
+    except Exception as exc:
+        LOGGER.warning("live_news fetch failed for %s: %s", symbol, exc)
+        articles = []
+
+    result = []
+    for art in articles[:limit]:
+        result.append({
+            "title": art.title,
+            "url": art.url,
+            "source": art.source,
+            "published_at": art.published_at.isoformat() if art.published_at else None,
+            "summary": art.summary,
+        })
+
+    return {"symbol": symbol, "articles": result}
 
 
 @app.post("/api/run-analysis")

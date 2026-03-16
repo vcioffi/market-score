@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from src.llm.schemas import TickerAnalysis
+from src.llm.schemas import FundamentalAnalysisLLM, TickerAnalysis
 from src.tickers.models import TickerProfile
 
 POSITIVE_WORDS = {
@@ -66,6 +66,112 @@ def _build_qualitative_summary(company_news: list[dict], sector_news: list[dict]
     if not headlines:
         return "No major validated catalysts in window; rely more heavily on quantitative setup."
     return " | ".join(headlines)
+
+
+def _build_fallback_fundamental_analysis(fundamentals: dict) -> FundamentalAnalysisLLM:
+    """Deterministic fundamental analysis based on available quantitative metrics."""
+    pe = fundamentals.get("pe")
+    pb = fundamentals.get("pb_ratio")
+    roe = fundamentals.get("roe")
+    d_e = fundamentals.get("debt_to_equity")
+    current_ratio = fundamentals.get("current_ratio")
+    graham_num = fundamentals.get("graham_number")
+    mos = fundamentals.get("margin_of_safety")
+    rev_gr = fundamentals.get("revenue_growth")
+    op_margin = fundamentals.get("operating_margin")
+    eps_gr = fundamentals.get("eps_growth")
+
+    # Fundamental score: rule-based 0-100
+    score = 50.0
+    if roe is not None:
+        score += min(roe * 100, 15) if roe > 0 else -10
+    if d_e is not None:
+        score -= min(d_e / 10, 15)
+    if current_ratio is not None:
+        score += 5 if current_ratio >= 2.0 else (2 if current_ratio >= 1.0 else -5)
+    if rev_gr is not None:
+        score += min(rev_gr * 50, 10) if rev_gr > 0 else -5
+    if op_margin is not None:
+        score += min(op_margin * 50, 10) if op_margin > 0.15 else (0 if op_margin > 0 else -5)
+    if eps_gr is not None:
+        score += min(eps_gr * 30, 8) if eps_gr > 0 else -3
+    score = max(0.0, min(100.0, round(score, 1)))
+
+    # Verdict from margin of safety
+    if mos is not None:
+        if mos >= 20:
+            verdict = "undervalued"
+        elif mos <= -20:
+            verdict = "overvalued"
+        else:
+            verdict = "fairly_valued"
+    elif pe is not None:
+        verdict = "undervalued" if pe < 15 else ("overvalued" if pe > 30 else "fairly_valued")
+    else:
+        verdict = "fairly_valued"
+
+    # Build text blocks
+    pe_text = f"P/E {pe:.1f}" if pe else "P/E n/a"
+    pb_text = f"P/B {pb:.1f}" if pb else "P/B n/a"
+    graham_text = (
+        f"Graham Number ${graham_num:.2f} (MoS {mos:+.1f}%)" if graham_num and mos is not None
+        else "Graham Number not computable (negative or missing EPS/BVPS)"
+    )
+    roe_text = f"ROE {roe*100:.1f}%" if roe is not None else "ROE n/a"
+    de_text = f"D/E {d_e:.1f}" if d_e is not None else "D/E n/a"
+    cr_text = f"Current ratio {current_ratio:.1f}" if current_ratio else "Current ratio n/a"
+
+    strengths = []
+    concerns = []
+    if roe and roe > 0.15:
+        strengths.append(f"High ROE ({roe*100:.1f}%) indicates strong capital efficiency")
+    if d_e is not None and d_e < 50:
+        strengths.append("Conservative leverage supports balance sheet resilience")
+    if current_ratio and current_ratio >= 2.0:
+        strengths.append("Strong liquidity position")
+    if rev_gr and rev_gr > 0.10:
+        strengths.append(f"Solid revenue growth ({rev_gr*100:.1f}%)")
+    if graham_num and mos and mos >= 20:
+        strengths.append(f"Trading below Graham Number with {mos:.1f}% margin of safety")
+
+    if d_e is not None and d_e > 150:
+        concerns.append("High leverage increases financial risk")
+    if current_ratio and current_ratio < 1.0:
+        concerns.append("Liquidity risk: current ratio below 1.0")
+    if pe and pe > 35:
+        concerns.append(f"Elevated P/E ({pe:.1f}x) leaves limited margin for earnings misses")
+    if mos and mos < -20:
+        concerns.append(f"Trading {abs(mos):.1f}% above Graham Number (overvalued territory)")
+    if rev_gr is not None and rev_gr < 0:
+        concerns.append("Negative revenue growth raises sustainability questions")
+
+    return FundamentalAnalysisLLM(
+        moat_assessment=(
+            "Deterministic fallback — moat assessment requires LLM analysis. "
+            f"Quantitative proxy: {roe_text}, {op_margin*100:.1f}% operating margin." if op_margin else
+            "Deterministic fallback — moat assessment requires LLM analysis."
+        ),
+        management_quality=(
+            "Deterministic fallback — management quality requires qualitative LLM analysis. "
+            f"Capital efficiency proxy: {roe_text}."
+        ),
+        growth_prospects=(
+            f"Deterministic fallback. Revenue growth: {rev_gr*100:.1f}%, "
+            f"EPS growth: {eps_gr*100:.1f}%." if rev_gr is not None and eps_gr is not None
+            else "Deterministic fallback — growth data partially unavailable."
+        ),
+        financial_health_summary=(
+            f"{de_text} | {cr_text} | Free cashflow data {'available' if fundamentals.get('free_cashflow') else 'unavailable'}."
+        ),
+        fair_value_assessment=(
+            f"{pe_text} | {pb_text} | {graham_text}. "
+            f"Verdict: {verdict.replace('_', ' ')} based on available metrics."
+        ),
+        fundamental_score=score,
+        fundamental_verdict=verdict,
+        key_strengths=strengths[:4] or ["Insufficient data for deterministic strength identification"],
+        key_concerns=concerns[:4] or ["Insufficient data for deterministic concern identification"],
+    )
 
 
 def build_fallback_ticker_analysis(
@@ -165,6 +271,8 @@ def build_fallback_ticker_analysis(
         "Sector-level risk events affecting peer group sentiment",
     ]
 
+    fundamental_analysis = _build_fallback_fundamental_analysis(fundamentals)
+
     return TickerAnalysis(
         ticker=profile.symbol,
         company_name=profile.company_name,
@@ -185,6 +293,7 @@ def build_fallback_ticker_analysis(
         sources_used=list(dict.fromkeys(sources_used)),
         quant_metrics=quant,
         fundamentals=fundamentals,
+        fundamental_analysis=fundamental_analysis,
         price_history=metrics_payload.get("price_history", []),
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
