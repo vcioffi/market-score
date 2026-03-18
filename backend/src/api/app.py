@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.models import RunAnalysisRequest, RunSingleTickerRequest
+from src.api.models import RunAnalysisRequest, RunMacroRequest, RunSingleTickerRequest
 from src.config.settings import get_settings
 from src.market_data.client import MarketDataClient
 from src.news.yahoo_provider import YahooFinanceNewsProvider
@@ -168,6 +168,30 @@ def latest_macro_analysis(run_date: Optional[str] = None) -> dict:
     if payload is None:
         raise HTTPException(status_code=500, detail="Macro analysis artifact is invalid")
     return payload
+
+
+@app.get("/api/failed-tickers")
+def failed_tickers(run_date: Optional[str] = None) -> dict:
+    storage = _build_storage()
+    selected_run = run_date or storage.latest_run_date()
+    if not selected_run:
+        raise HTTPException(status_code=404, detail="No run available")
+
+    errors = storage.load_pipeline_errors(selected_run)
+    # Filter out symbols that were successfully retried (output file now exists)
+    existing_symbols = {p.stem.upper() for p in storage.list_ticker_output_files(selected_run)}
+    pending = [e for e in errors if e["symbol"].upper() not in existing_symbols]
+
+    return {"run_date": selected_run, "failed_tickers": pending}
+
+
+@app.post("/api/run-macro")
+def run_macro(payload: RunMacroRequest) -> dict:
+    run_date = payload.run_date or today_iso(settings.timezone)
+    storage = _build_storage()
+    pipeline = MacroPipeline(settings=settings, storage=storage)
+    result = pipeline.run(run_date=run_date)
+    return result
 
 
 @app.get("/api/live/quote/{symbol}")

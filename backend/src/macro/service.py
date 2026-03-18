@@ -54,6 +54,7 @@ class MacroService:
     def __init__(self, raw_data_dir: Path):
         self.cache_dir = raw_data_dir / "cache" / "macro"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._fetch_errors: list[dict] = []
 
     # ------------------------------------------------------------------
     # Cache helpers (mirrors MarketDataClient pattern)
@@ -106,12 +107,14 @@ class MacroService:
             df = ticker.history(period=period, interval="1d", auto_adjust=True)
             if df is None or df.empty:
                 LOGGER.warning("No data returned for macro symbol %s", symbol)
+                self._fetch_errors.append({"symbol": symbol, "error": "No data returned", "stage": "macro"})
                 return None
             df.to_csv(csv_path)
             self._write_meta(meta_path)
             return df
         except Exception as exc:
             LOGGER.warning("Failed to fetch macro symbol %s: %s", symbol, exc)
+            self._fetch_errors.append({"symbol": symbol, "error": str(exc), "stage": "macro"})
             return None
 
     @staticmethod
@@ -158,8 +161,9 @@ class MacroService:
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch_macro_context(self, run_date: str, period: str = "3mo") -> MacroContext:
-        """Fetch all macro indicators and return a MacroContext."""
+    def fetch_macro_context(self, run_date: str, period: str = "3mo") -> tuple[MacroContext, list[dict]]:
+        """Fetch all macro indicators and return (MacroContext, fetch_errors)."""
+        self._fetch_errors = []
         indicators: list[MacroIndicator] = []
 
         # Core macro indicators
@@ -190,10 +194,11 @@ class MacroService:
         if vix and vix.current_value is not None:
             vix_level = round(vix.current_value, 2)
 
-        return MacroContext(
+        context = MacroContext(
             run_date=run_date,
             indicators=indicators,
             yield_curve_spread=yield_curve_spread,
             vix_level=vix_level,
             sector_performance=sector_performance,
         )
+        return context, list(self._fetch_errors)

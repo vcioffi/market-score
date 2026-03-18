@@ -22,3 +22,7 @@ class RunSingleTickerRequest(BaseModel):
     dry_run: bool | None = None
     use_batch: bool | None = None
     openai_news_research: bool | None = None
+
+
+class RunMacroRequest(BaseModel):
+    run_date: str | None = None

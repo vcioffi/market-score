@@ -110,10 +110,29 @@ class JsonStorage:
         run_dir = self.outputs_dir / run_date
         if not run_dir.exists():
             return []
-        _EXCLUDED = {"weekly_summary.json", "macro_analysis.json"}
+        _EXCLUDED = {"weekly_summary.json", "macro_analysis.json", "pipeline_errors.json"}
         return sorted(
             [item for item in run_dir.glob("*.json") if item.name.lower() not in _EXCLUDED]
         )
+
+    def save_pipeline_errors(self, run_date: str, errors: list[dict]) -> Path:
+        folder = self._run_dir(self.outputs_dir, run_date)
+        file_path = folder / "pipeline_errors.json"
+        file_path.write_text(
+            json.dumps({"run_date": run_date, "errors": errors}, indent=2),
+            encoding="utf-8",
+        )
+        return file_path
+
+    def load_pipeline_errors(self, run_date: str) -> list[dict]:
+        file_path = self.outputs_dir / run_date / "pipeline_errors.json"
+        if not file_path.exists():
+            return []
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+            return data.get("errors", [])
+        except Exception:
+            return []
 
     def save_macro_analysis(self, run_date: str, payload: dict) -> Path:
         folder = self._run_dir(self.outputs_dir, run_date)

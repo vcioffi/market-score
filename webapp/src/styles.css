@@ -722,3 +722,59 @@ td a {
 .tooltip-wrap:hover .tooltip-body {
   display: block;
 }
+
+/* Failed tickers panel */
+.failed-tickers-panel {
+  border-left: 3px solid var(--color-negative, #e55);
+}
+
+.failed-tickers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.failed-ticker-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface-raised, rgba(255,255,255,0.04));
+  border-radius: 6px;
+}
+
+.failed-ticker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.failed-ticker-error {
+  word-break: break-all;
+}
+
+.btn-retry {
+  flex-shrink: 0;
+  padding: 0.3rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-accent, #4a9eff);
+  background: transparent;
+  color: var(--color-accent, #4a9eff);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-retry:hover:not(:disabled) {
+  background: var(--color-accent, #4a9eff);
+  color: #fff;
+}
+
+.btn-retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

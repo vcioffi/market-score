@@ -35,7 +35,7 @@ Market Score è una piattaforma di ricerca finanziaria AI-assistita. Il backend 
 1. **Acquisisce** dati di mercato (prezzi OHLCV, fondamentali) via yfinance
 2. **Calcola** metriche quantitative (RSI, Sharpe, beta, drawdown) e fondamentali (Graham Number, margin of safety)
 3. **Raccoglie** news da Yahoo Finance (o ricerca web via OpenAI)
-4. **Analizza** ogni ticker tramite LLM (OpenAI / Ollama / Groq / Gemini) **oppure** motore deterministico statico
+4. **Analizza** ogni ticker tramite LLM (qualsiasi endpoint OpenAI-compatibile: OpenAI, Ollama, Groq, Gemini) **oppure** motore deterministico statico
 5. **Genera** un riepilogo settimanale con ranking, basket raccomandato e analisi macro
 6. **Espone** i risultati tramite API FastAPI consumata dal frontend React
 
@@ -44,8 +44,19 @@ Market Score è una piattaforma di ricerca finanziaria AI-assistita. Il backend 
 | Modalità | `dry_run` | `analysis_mode` | LLM | Costo |
 |---|---|---|---|---|
 | Dry-run (default) | `true` | `"llm"` | No (fallback deterministico) | Zero |
-| Static | `false` | `"static"` | No (engine rule-based) | Zero |
-| LLM live | `false` | `"llm"` | Sì (OpenAI/Groq/Ollama) | A consumo |
+| Static (`--static`) | `false` | `"static"` | No (engine rule-based, dati reali) | Zero |
+| LLM live | `false` | `"llm"` | Sì (OpenAI / Groq / Ollama / Gemini) | A consumo |
+
+### Provider LLM supportati
+
+Il backend usa qualsiasi API OpenAI-compatibile configurata via variabili `MARKET_SCORE_LLM_*`:
+
+| Provider | `LLM_BASE_URL` | Note |
+|---|---|---|
+| **OpenAI** (legacy) | `None` (default) | Richiede `OPENAI_API_KEY` |
+| **Ollama** (locale) | `http://localhost:11434/v1` | Gratuito, offline; usa `LLM_USE_JSON_SCHEMA=false` |
+| **Groq** (free tier) | `https://api.groq.com/openai/v1` | 14 400 req/giorno gratuiti |
+| **Gemini** (free tier) | `https://generativelanguage.googleapis.com/v1beta/openai` | Chiave da Google AI Studio |
 
 ---
 
@@ -129,38 +140,38 @@ backend/
 
 | Variabile | Tipo | Default | Descrizione |
 |---|---|---|---|
-| `MARKET_SCORE_MAX_COMPANY_NEWS` | `int` | `3` | Articoli azienda per ticker |
-| `MARKET_SCORE_MAX_SECTOR_NEWS` | `int` | `3` | Articoli settore per ticker |
+| `MARKET_SCORE_MAX_COMPANY_NEWS` | `int` | `5` | Articoli azienda per ticker |
+| `MARKET_SCORE_MAX_SECTOR_NEWS` | `int` | `5` | Articoli settore per ticker |
 | `MARKET_SCORE_NEWS_WINDOW_DAYS` | `int` | `30` | Finestra temporale news (giorni) |
-| `MARKET_SCORE_NEWS_SUMMARY_CHAR_LIMIT` | `int` | `200` | Lunghezza massima summary |
+| `MARKET_SCORE_NEWS_SUMMARY_CHAR_LIMIT` | `int` | `420` | Lunghezza massima summary |
 | `MARKET_SCORE_ALLOW_MOCK_NEWS` | `bool` | `true` | Fallback a news mock offline |
 
 ### Backend LLM generico (OpenAI-compatibile)
 
 | Variabile | Tipo | Default | Descrizione |
 |---|---|---|---|
-| `MARKET_SCORE_LLM_BASE_URL` | `str\|None` | `None` | URL endpoint custom (Ollama, Groq, Gemini) |
-| `MARKET_SCORE_LLM_API_KEY` | `str\|None` | `None` | Chiave API per endpoint custom |
-| `MARKET_SCORE_LLM_MODEL` | `str\|None` | `None` | Nome modello (sovrascrive quelli OpenAI) |
-| `MARKET_SCORE_LLM_USE_JSON_SCHEMA` | `bool` | `true` | False per provider senza strict schema (Ollama) |
+| `MARKET_SCORE_LLM_BASE_URL` | `str\|None` | `None` | URL endpoint custom (Ollama, Groq, Gemini); `None` = OpenAI |
+| `MARKET_SCORE_LLM_API_KEY` | `str\|None` | `None` | Chiave API per il provider attivo |
+| `MARKET_SCORE_LLM_MODEL` | `str\|None` | `None` | Nome modello; sovrascrive i default OpenAI quando impostato |
+| `MARKET_SCORE_LLM_USE_JSON_SCHEMA` | `bool` | `true` | `false` per provider senza strict JSON schema (es. Ollama) |
 
 ### OpenAI (legacy, backward-compatible)
 
 | Variabile | Tipo | Default | Descrizione |
 |---|---|---|---|
-| `MARKET_SCORE_OPENAI_API_KEY` | `str\|None` | `None` | Chiave API OpenAI |
+| `MARKET_SCORE_OPENAI_API_KEY` | `str\|None` | `None` | Chiave API OpenAI (usata se `LLM_API_KEY` non è impostata) |
 | `MARKET_SCORE_OPENAI_MODEL_TICKER` | `str` | `"gpt-4o-mini"` | Modello per analisi ticker |
 | `MARKET_SCORE_OPENAI_MODEL_WEEKLY` | `str` | `"gpt-4o-mini"` | Modello per weekly/macro |
 | `MARKET_SCORE_OPENAI_MODEL_NEWS` | `str` | `"gpt-4o-mini"` | Modello per ricerca news |
-| `MARKET_SCORE_OPENAI_USE_BATCH` | `bool` | `true` | Usa Batch API (sconto ~50%) |
+| `MARKET_SCORE_OPENAI_USE_BATCH` | `bool` | `false` | Usa OpenAI Batch API (sconto ~50%, coda 24h) |
 | `MARKET_SCORE_OPENAI_COMPLETION_WINDOW` | `str` | `"24h"` | Finestra completamento batch |
 | `MARKET_SCORE_OPENAI_POLL_INTERVAL_SECONDS` | `int` | `30` | Frequenza polling batch |
 | `MARKET_SCORE_OPENAI_MAX_WAIT_MINUTES` | `int` | `180` | Attesa massima batch |
-| `MARKET_SCORE_OPENAI_TICKER_MAX_COMPLETION_TOKENS` | `int` | `3000` | Budget token per ticker |
-| `MARKET_SCORE_OPENAI_WEEKLY_MAX_COMPLETION_TOKENS` | `int` | `3000` | Budget token per weekly/macro |
-| `MARKET_SCORE_OPENAI_NEWS_MAX_OUTPUT_TOKENS` | `int` | `12000` | Budget token per news research |
-| `MARKET_SCORE_OPENAI_NEWS_SEARCH_CONTEXT_SIZE` | `str` | `"medium"` | Dimensione contesto ricerca web |
-| `MARKET_SCORE_OPENAI_NEWS_RESEARCH_ENABLED` | `bool` | `false` | Abilita ricerca web news |
+| `MARKET_SCORE_OPENAI_TICKER_MAX_COMPLETION_TOKENS` | `int` | `1500` | Budget token per ticker |
+| `MARKET_SCORE_OPENAI_WEEKLY_MAX_COMPLETION_TOKENS` | `int` | `2000` | Budget token per weekly/macro |
+| `MARKET_SCORE_OPENAI_NEWS_MAX_OUTPUT_TOKENS` | `int` | `8000` | Budget token per news research |
+| `MARKET_SCORE_OPENAI_NEWS_SEARCH_CONTEXT_SIZE` | `str` | `"high"` | Dimensione contesto ricerca web (`"high"` o `"medium"`) |
+| `MARKET_SCORE_OPENAI_NEWS_RESEARCH_ENABLED` | `bool` | `false` | Abilita ricerca web news via OpenAI |
 | `MARKET_SCORE_OPENAI_NEWS_WORKERS` | `int` | `1` | Worker paralleli per ricerca news |
 
 ### Proprietà calcolate
@@ -1128,19 +1139,19 @@ python scripts/run_all.py [OPTIONS]
 --no-wait-for-batch        Non attendere completamento batch OpenAI
 
 # Modalità analisi:
---static                   Analisi statica (zero LLM, costo zero)
---live                     Abilita LLM (disabilita dry_run)
---live-no-batch            LLM diretto sincrono (senza batch queue)
+--static                   Analisi rule-based senza LLM (dati reali yfinance, costo zero)
+--live                     Abilita LLM (disabilita dry_run, usa batch se OPENAI_USE_BATCH=true)
+--live-no-batch            LLM sincrono diretto (nessuna coda batch, risultati immediati)
 
 # News:
---openai-news-research     Usa web search OpenAI per news
---openai-news-model MODEL  Sovrascrive modello news
---news-workers N           Worker paralleli per news research
+--openai-news-research     Usa web search OpenAI per news (abilita automaticamente)
+--openai-news-model MODEL  Sovrascrive modello news (abilita automaticamente la ricerca OpenAI)
+--news-workers N           Worker paralleli per news research (default 1)
 
 # Skip stages:
---skip-news                Riusa news già salvate su disco
---skip-macro               Salta pipeline macro
---llm-only                 Salta market/metrics/news (solo analisi LLM su dati esistenti)
+--skip-news                Riusa news già salvate su disco, salta NewsPipeline
+--skip-macro               Salta MacroPipeline
+--llm-only                 Salta market data, metrics e news; esegue solo analisi LLM su dati esistenti
 ```
 
 ### `run_api.py` — Server FastAPI

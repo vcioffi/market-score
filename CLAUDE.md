@@ -23,17 +23,26 @@ pip install -e ".[dev]"
 
 ```bash
 cd backend
-# Dry run (no OpenAI calls, uses deterministic fallback)
+# Dry run (no LLM calls, uses deterministic fallback)
 python scripts/run_all.py
+
+# Static analysis (real market data + news, zero LLM cost)
+python scripts/run_all.py --static
 
 # Live with batch mode (24h OpenAI batch queue, cost-optimized)
 python scripts/run_all.py --live
 
-# Live with direct/synchronous OpenAI calls
+# Live with direct/synchronous LLM calls (OpenAI, Groq, Ollama, Gemini)
 python scripts/run_all.py --live-no-batch --symbols AAPL,MSFT
 
 # With OpenAI web search for news
 python scripts/run_all.py --live-no-batch --openai-news-research --symbols NVDA
+
+# Skip news pipeline (reuse saved news context from disk)
+python scripts/run_all.py --live --skip-news --symbols AAPL,MSFT
+
+# LLM-only (skip market data, metrics, news — run only LLM on saved data)
+python scripts/run_all.py --live --llm-only --symbols AAPL,MSFT
 
 # Run individual pipeline stages
 python scripts/run_market_data.py --period 3y
@@ -125,17 +134,21 @@ Vite proxies `/api` to `http://localhost:8000`.
 
 - **`backend/config/tickers.json`** — list of ~100 tickers with symbol, name, sector, industry, market, peers
 - **`.env`** (from `.env.example`) — all runtime config; key vars:
-  - `MARKET_SCORE_OPENAI_API_KEY` — required for live mode
-  - `MARKET_SCORE_DRY_RUN=true` — default; set `false` for real OpenAI calls
-  - `MARKET_SCORE_OPENAI_USE_BATCH=true` — whether to use OpenAI Batch API
+  - `MARKET_SCORE_LLM_BASE_URL` — URL of the LLM backend (Ollama, Groq, Gemini, or omit for OpenAI)
+  - `MARKET_SCORE_LLM_API_KEY` — API key for the active LLM backend
+  - `MARKET_SCORE_LLM_MODEL` — model name (overrides OpenAI defaults when set)
+  - `MARKET_SCORE_OPENAI_API_KEY` — OpenAI key (legacy, used if `LLM_API_KEY` is not set)
+  - `MARKET_SCORE_DRY_RUN=true` — default; set `false` to enable live LLM calls
+  - `MARKET_SCORE_OPENAI_USE_BATCH=false` — set `true` to use OpenAI Batch API (24h queue)
   - `MARKET_SCORE_TIMEZONE=Europe/Rome`
 
 ### LLM Modes
 
 1. **Dry run** (default) — deterministic fallback, zero cost, no API key needed
-2. **Batch mode** (`--live`) — submits to OpenAI Batch API, 24h window, ~50% cheaper
-3. **Direct mode** (`--live-no-batch`) — synchronous OpenAI calls, results immediately
-4. **News research** (`--openai-news-research`) — uses OpenAI web search for news instead of Yahoo Finance
+2. **Static** (`--static`) — rule-based `StaticAnalysisEngine`, real market data + news, zero LLM calls
+3. **Batch mode** (`--live`) — submits to OpenAI Batch API, 24h window, ~50% cheaper
+4. **Direct mode** (`--live-no-batch`) — synchronous LLM calls (OpenAI/Groq/Ollama/Gemini), results immediately
+5. **News research** (`--openai-news-research`) — uses OpenAI web search for news instead of Yahoo Finance
 
 ### API Endpoints
 

@@ -56,7 +56,8 @@ def build_macro_user_prompt(payload: dict) -> str:
     return (
         "Analyze the following macroeconomic indicators and output one JSON object. "
         "Write a macro_commentary of 3-5 paragraphs covering: market regime, yield curve dynamics, "
-        "sector rotation, currency and commodity signals, key risks and outlook.\n"
+        "sector rotation, currency and commodity signals, key risks and outlook. "
+        "Write the macro_commentary in Italian.\n"
         + json.dumps(payload, separators=(",", ":"))
     )
 

@@ -39,6 +39,7 @@ class MarketDataPipeline:
 
         processed = 0
         failed: list[str] = []
+        errors: list[dict] = []
         fallback_symbols: list[str] = []
         removed_symbols: list[str] = []
 
@@ -80,12 +81,16 @@ class MarketDataPipeline:
                     removed_symbols.append(profile.symbol)
                     continue
                 # Other ValueError → transient, skip without removing
-                LOGGER.warning("Skipping %s due to data error: %s", profile.symbol, exc)
+                error_msg = str(exc)
+                LOGGER.warning("Skipping %s due to data error: %s", profile.symbol, error_msg)
                 failed.append(profile.symbol)
+                errors.append({"symbol": profile.symbol, "error": error_msg, "stage": "market_data"})
                 continue
             except Exception as exc:
-                LOGGER.warning("Skipping %s due to unexpected error: %s", profile.symbol, exc)
+                error_msg = str(exc)
+                LOGGER.warning("Skipping %s due to unexpected error: %s", profile.symbol, error_msg)
                 failed.append(profile.symbol)
+                errors.append({"symbol": profile.symbol, "error": error_msg, "stage": "market_data"})
                 continue
 
             try:
@@ -93,8 +98,13 @@ class MarketDataPipeline:
                 self.storage.save_fundamentals(run_date=run_date, symbol=profile.symbol, payload=fundamentals)
                 processed += 1
             except Exception as exc:
-                LOGGER.error("Market data pipeline save failed for %s: %s", profile.symbol, exc)
+                error_msg = str(exc)
+                LOGGER.error("Market data pipeline save failed for %s: %s", profile.symbol, error_msg)
                 failed.append(profile.symbol)
+                errors.append({"symbol": profile.symbol, "error": error_msg, "stage": "market_data_save"})
+
+        if errors:
+            self.storage.save_pipeline_errors(run_date=run_date, errors=errors)
 
         return {
             "run_date": run_date,

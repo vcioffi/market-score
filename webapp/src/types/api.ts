@@ -159,3 +159,14 @@ export interface TickersResponse {
   run_date?: string;
   tickers: TickerLight[];
 }
+
+export interface FailedTicker {
+  symbol: string;
+  error: string;
+  stage: string;
+}
+
+export interface FailedTickersResponse {
+  run_date: string;
+  failed_tickers: FailedTicker[];
+}

@@ -1,4 +1,5 @@
 import type {
+  FailedTickersResponse,
   LatestRunResponse,
   LiveNews,
   LiveQuote,
@@ -53,4 +54,42 @@ export async function getLiveNews(symbol: string, limit = 15): Promise<LiveNews>
   return apiGet<LiveNews>(
     `/api/live/news/${encodeURIComponent(symbol)}?limit=${limit}`,
   );
+}
+
+export async function getFailedTickers(runDate?: string): Promise<FailedTickersResponse> {
+  const suffix = runDate ? `?run_date=${encodeURIComponent(runDate)}` : "";
+  return apiGet<FailedTickersResponse>(`/api/failed-tickers${suffix}`);
+}
+
+export async function retryTicker(symbol: string, runDate?: string): Promise<unknown> {
+  const body: Record<string, unknown> = { force_refresh: true };
+  if (runDate) body.run_date = runDate;
+  const response = await fetch(
+    `${API_BASE}/api/run-single-ticker/${encodeURIComponent(symbol)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Retry failed (${response.status}): ${text}`);
+  }
+  return response.json();
+}
+
+export async function retryMacro(runDate?: string): Promise<unknown> {
+  const body: Record<string, unknown> = {};
+  if (runDate) body.run_date = runDate;
+  const response = await fetch(`${API_BASE}/api/run-macro`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Retry macro failed (${response.status}): ${text}`);
+  }
+  return response.json();
 }

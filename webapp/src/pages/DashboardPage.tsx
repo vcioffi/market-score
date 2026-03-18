@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { BasketCard } from "../components/BasketCard";
@@ -7,8 +7,8 @@ import { RankingTable } from "../components/RankingTable";
 import { ScoreCard } from "../components/ScoreCard";
 import { TickerSearch } from "../components/TickerSearch";
 import { Tooltip } from "../components/Tooltip";
-import { getMacroLatest, getTickers, getWeeklySummaryLatest } from "../services/api";
-import type { MacroAnalysis, TickerLight, WeeklySummary } from "../types/api";
+import { getFailedTickers, getMacroLatest, getTickers, getWeeklySummaryLatest, retryMacro, retryTicker } from "../services/api";
+import type { FailedTicker, MacroAnalysis, TickerLight, WeeklySummary } from "../types/api";
 import { T } from "../utils/tooltips";
 
 function regimeBadgeClass(regime: string): string {
@@ -25,6 +25,124 @@ function fmtPct(v: number | null | undefined): string {
 function fmtVal(v: number | null | undefined, decimals = 2): string {
   if (v == null) return "—";
   return v.toFixed(decimals);
+}
+
+interface FailedTickersPanelProps {
+  runDate: string | undefined;
+}
+
+function FailedTickersPanel({ runDate }: FailedTickersPanelProps) {
+  const [failedTickers, setFailedTickers] = useState<FailedTicker[]>([]);
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
+  const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
+  const [retryingMacro, setRetryingMacro] = useState(false);
+  const [macroRetryError, setMacroRetryError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await getFailedTickers(runDate);
+      setFailedTickers(res.failed_tickers);
+    } catch {
+      // no failed tickers file yet — normal on first run
+    }
+  }, [runDate]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (failedTickers.length === 0) return null;
+
+  const tickerErrors = failedTickers.filter((t) => t.stage !== "macro");
+  const macroErrors = failedTickers.filter((t) => t.stage === "macro");
+
+  async function handleRetry(symbol: string) {
+    setRetrying((prev) => ({ ...prev, [symbol]: true }));
+    setRetryErrors((prev) => { const next = { ...prev }; delete next[symbol]; return next; });
+    try {
+      await retryTicker(symbol, runDate);
+      setFailedTickers((prev) => prev.filter((t) => t.symbol !== symbol));
+    } catch (err) {
+      setRetryErrors((prev) => ({ ...prev, [symbol]: (err as Error).message }));
+    } finally {
+      setRetrying((prev) => ({ ...prev, [symbol]: false }));
+    }
+  }
+
+  async function handleRetryMacro() {
+    setRetryingMacro(true);
+    setMacroRetryError(null);
+    try {
+      await retryMacro(runDate);
+      setFailedTickers((prev) => prev.filter((t) => t.stage !== "macro"));
+    } catch (err) {
+      setMacroRetryError((err as Error).message);
+    } finally {
+      setRetryingMacro(false);
+    }
+  }
+
+  return (
+    <section className="panel failed-tickers-panel">
+      <div className="panel-header">
+        <h3>Errori di caricamento dati</h3>
+        <span className="badge badge-negative">{failedTickers.length} falliti</span>
+      </div>
+
+      {macroErrors.length > 0 && (
+        <div style={{ marginBottom: "1rem" }}>
+          <div className="failed-ticker-row">
+            <div className="failed-ticker-info">
+              <span className="ticker-symbol">Analisi Macro</span>
+              <span className="failed-ticker-stage muted small">macro — {macroErrors.length} indicatori non scaricati</span>
+              <span className="failed-ticker-error muted small" title={macroErrors[0].error}>
+                {macroErrors[0].error.length > 80 ? macroErrors[0].error.slice(0, 80) + "…" : macroErrors[0].error}
+              </span>
+              {macroRetryError && (
+                <span className="small" style={{ color: "var(--color-negative)" }}>{macroRetryError}</span>
+              )}
+            </div>
+            <button className="btn-retry" onClick={handleRetryMacro} disabled={retryingMacro}>
+              {retryingMacro ? "..." : "Riprova macro"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tickerErrors.length > 0 && (
+        <>
+          <p className="muted small" style={{ marginBottom: "0.5rem" }}>
+            Ticker non scaricati — riprova singolarmente:
+          </p>
+          <div className="failed-tickers-list">
+            {tickerErrors.map((t) => (
+              <div key={t.symbol} className="failed-ticker-row">
+                <div className="failed-ticker-info">
+                  <span className="ticker-symbol">{t.symbol}</span>
+                  <span className="failed-ticker-stage muted small">{t.stage}</span>
+                  <span className="failed-ticker-error muted small" title={t.error}>
+                    {t.error.length > 80 ? t.error.slice(0, 80) + "…" : t.error}
+                  </span>
+                  {retryErrors[t.symbol] && (
+                    <span className="small" style={{ color: "var(--color-negative)" }}>
+                      {retryErrors[t.symbol]}
+                    </span>
+                  )}
+                </div>
+                <button
+                  className="btn-retry"
+                  onClick={() => handleRetry(t.symbol)}
+                  disabled={retrying[t.symbol]}
+                >
+                  {retrying[t.symbol] ? "..." : "Riprova"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
 
 function MacroPanel({ macro }: { macro: MacroAnalysis }) {
@@ -263,6 +381,8 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
           </div>
         </section>
       </div>
+
+      <FailedTickersPanel runDate={summary?.run_date} />
 
       {macro && <MacroPanel macro={macro} />}
 

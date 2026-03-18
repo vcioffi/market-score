@@ -27,6 +27,7 @@ backend/tmp*/
 # Node
 webapp/node_modules/
 webapp/dist/
+webapp/tsconfig.tsbuildinfo
 
 # Generated data and runtime artifacts
 backend/data/raw/cache/

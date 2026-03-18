@@ -18,15 +18,17 @@ Il repository e pensato per una pubblicazione pubblica su GitHub: il codice, gli
 
 ## Obiettivi coperti
 
-- Universo iniziale di 100 ticker con metadati modificabili.
+- Universo di ~60 ticker US large-cap con metadati modificabili.
 - Download OHLCV giornaliero + snapshot fondamentali via Yahoo Finance (`yfinance`) con cache locale.
-- Calcolo metriche quant richieste: return multi-orizzonte, vol rolling, max drawdown, Sharpe, Sortino, beta, correlazione, momentum, RSI, medie mobili, distanza da high/low, metriche volume, breakout/compressione.
-- Modulo news con provider primario (`yfinance`) + fallback mock plug-and-play.
-- Pipeline LLM in piu passaggi con schema JSON stabile e validazione pydantic.
-- Chiamate OpenAI in batch con `completion_window=24h` per sfruttare modalita non prioritaria.
-- Output datato per run: `backend/data/outputs/YYYY-MM-DD/*.json` + `weekly_summary.json`.
-- API FastAPI con endpoint richiesti.
-- Web app React + Vite con dashboard ranking, filtri, ricerca ticker, dettaglio completo e grafico prezzo.
+- Calcolo metriche quant: return multi-orizzonte, vol rolling, max drawdown, Sharpe, Sortino, beta, correlazione, momentum, RSI, medie mobili, distanza da high/low, breakout/compressione.
+- Modulo news con provider primario (`yfinance`) + ricerca web OpenAI + fallback mock plug-and-play.
+- Motore di analisi statica (`--static`): scoring e narrativa deterministici, zero LLM, dati reali.
+- Pipeline LLM con supporto multi-provider (OpenAI, Ollama, Groq, Gemini) via API OpenAI-compatibile.
+- Chiamate OpenAI in batch con `completion_window=24h` per sfruttare modalita non prioritaria (opzionale).
+- Pipeline macro: VIX, curva dei rendimenti, performance settori ETF, MacroAnalysis.
+- Output datato per run: `backend/data/outputs/YYYY-MM-DD/*.json` + `weekly_summary.json` + `macro_analysis.json`.
+- API FastAPI con endpoint per tickers, summary settimanale, macro, quote live e news live.
+- Web app React + Vite con interfaccia in italiano, dashboard ranking, filtri, ricerca ticker, dettaglio completo, grafico prezzo, pannello macro e tooltip informativi su ogni metrica finanziaria.
 
 ## Struttura progetto
 
@@ -81,28 +83,43 @@ Market Score/
 
 ### 1) Backend
 
+**Linux / macOS:**
 ```bash
-cd "Market Score/backend"
+cd backend
 python -m venv .venv
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
 ### 2) Variabili ambiente
 
+**Linux / macOS:**
 ```bash
-cd "Market Score"
+cp .env.example .env
+```
+
+**Windows (PowerShell):**
+```powershell
 copy .env.example .env
 ```
 
 Config principali:
 
-- `MARKET_SCORE_OPENAI_API_KEY`: chiave OpenAI.
-- `MARKET_SCORE_DRY_RUN`: `true` usa fallback deterministico senza chiamate LLM remote.
-- `MARKET_SCORE_OPENAI_USE_BATCH`: lasciare `true` per batch API.
-- `MARKET_SCORE_OPENAI_COMPLETION_WINDOW`: default `24h`.
-- `MARKET_SCORE_OPENAI_TICKER_MAX_COMPLETION_TOKENS` e `MARKET_SCORE_OPENAI_WEEKLY_MAX_COMPLETION_TOKENS`: controllo output token LLM.
+- `MARKET_SCORE_DRY_RUN`: `true` usa fallback deterministico senza chiamate LLM remote (default).
+- `MARKET_SCORE_LLM_BASE_URL`: URL del provider LLM (`http://localhost:11434/v1` per Ollama, `https://api.groq.com/openai/v1` per Groq, ecc.; omettere per OpenAI).
+- `MARKET_SCORE_LLM_API_KEY`: chiave API del provider attivo.
+- `MARKET_SCORE_LLM_MODEL`: nome del modello (sovrascrive i default OpenAI).
+- `MARKET_SCORE_OPENAI_API_KEY`: chiave OpenAI (usata se `LLM_API_KEY` non è impostata).
+- `MARKET_SCORE_OPENAI_USE_BATCH`: `true` per usare OpenAI Batch API (coda 24h, -50% costo); default `false`.
+- `MARKET_SCORE_OPENAI_TICKER_MAX_COMPLETION_TOKENS` e `MARKET_SCORE_OPENAI_WEEKLY_MAX_COMPLETION_TOKENS`: budget token LLM (default `1500` / `2000`).
 
 ### 3) Export schema JSON (gia incluso)
 
@@ -120,7 +137,13 @@ cd "Market Score/backend"
 python scripts/run_all.py
 ```
 
-Modalita live con OpenAI:
+Modalita statica — dati reali, zero LLM, zero costo:
+
+```bash
+python scripts/run_all.py --static
+```
+
+Modalita live con LLM (OpenAI batch, Groq, Ollama, ecc.):
 
 ```bash
 python scripts/run_all.py --live
@@ -141,26 +164,35 @@ python scripts/run_all.py --live-no-batch --openai-news-research --symbols NVDA,
 Per forzare un modello news specifico (es. deep-research):
 
 ```bash
-python scripts/run_all.py --live-no-batch --openai-news-research --symbols NVDA,AMZN --openai-news-model o4-mini-deep-research
+python scripts/run_all.py --live-no-batch --openai-news-model o4-mini-deep-research --symbols NVDA,AMZN
 ```
 
 Nota: `--openai-news-model` abilita automaticamente la ricerca news via OpenAI. Non serve aggiungere `--openai-news-research` esplicitamente.
 
-Questa modalita usa OpenAI in chiamata sincrona per analisi ticker/weekly e per il contesto news via tool di web search.
-
-
 Note:
 
-- `--live` disabilita il fallback locale (usa batch API).
-- `--live-no-batch` usa OpenAI in chiamata sincrona (senza batch), quindi ricevi risultati LLM subito a costo standard.
-- `--openai-news-research` delega a OpenAI la ricerca web e il sentiment su azienda/contesto, con fallback automatico al provider locale se OpenAI fallisce su uno o piu ticker.
-- `--openai-news-model` permette di scegliere il modello per la sola ricerca news (es. `gpt-5`, `o4-mini-deep-research`). I modelli `deep-research` usano automaticamente `search_context_size=medium` (requisito API).
-- nel JSON `news` controlla `provider_mode`, `openai_researched`, `openai_fallback` e `openai_errors` per capire quanto del run e stato realmente coperto da OpenAI.
-- con OpenAI attivo, il modulo usa Batch API con finestra `24h`.
-- default: il sistema aspetta il batch in live mode per avere output LLM finali.
+- `--static` usa il motore rule-based (`StaticAnalysisEngine`): dati reali yfinance, analisi deterministica, zero chiamate API.
+- `--live` disabilita il fallback locale (usa LLM configurato; se `OPENAI_USE_BATCH=true` usa la coda Batch API).
+- `--live-no-batch` usa LLM in chiamata sincrona (senza batch), risultati immediati.
+- `--skip-news` riusa le news già salvate su disco, salta il NewsPipeline.
+- `--llm-only` salta market data, metrics e news; esegue solo l'analisi LLM su dati esistenti.
+- `--openai-news-research` delega a OpenAI la ricerca web e il sentiment, con fallback automatico al provider locale.
+- `--openai-news-model` permette di scegliere il modello per la sola ricerca news (es. `o4-mini-deep-research`). I modelli `deep-research` usano automaticamente `search_context_size=medium`.
+- nel JSON `news` controlla `provider_mode`, `openai_researched`, `openai_fallback` e `openai_errors` per capire la copertura OpenAI.
 - usa `--no-wait-for-batch` se vuoi output provvisori immediati con fallback + metadata batch.
 
-### Modelli consigliati
+### Provider LLM supportati
+
+Il backend accetta qualsiasi endpoint OpenAI-compatibile:
+
+| Provider | Costo | Configurazione chiave |
+|---|---|---|
+| **OpenAI** | A consumo | `MARKET_SCORE_OPENAI_API_KEY` |
+| **Ollama** (locale) | Gratuito | `LLM_BASE_URL=http://localhost:11434/v1` + `LLM_USE_JSON_SCHEMA=false` |
+| **Groq** | Free tier | `LLM_BASE_URL=https://api.groq.com/openai/v1` + `LLM_API_KEY=gsk_...` |
+| **Gemini** | Free tier | `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai` + `LLM_API_KEY=AIza...` |
+
+### Modelli consigliati (OpenAI)
 
 | Uso | Modello | Note |
 |-----|---------|------|
@@ -329,8 +361,8 @@ Risolto automaticamente: i modelli `*-deep-research` usano sempre `search_contex
 ### Direct mode: "No JSON object found in model output" / risposta vuota
 
 Il modello ha restituito risposta vuota o troncata. L output LLM ora usa structured output (`json_schema`) invece di `json_object` per maggiore affidabilita. Se il problema persiste:
-- Verifica che il modello configurato supporti structured output (`json_schema` strict mode).
-- Aumenta `MARKET_SCORE_OPENAI_TICKER_MAX_COMPLETION_TOKENS` (default: 2200).
+- Verifica che il modello configurato supporti structured output (`json_schema` strict mode). Per Ollama imposta `MARKET_SCORE_LLM_USE_JSON_SCHEMA=false`.
+- Aumenta `MARKET_SCORE_OPENAI_TICKER_MAX_COMPLETION_TOKENS` (default: 1500).
 
 
 

@@ -21,10 +21,14 @@ class MacroPipeline:
 
         LOGGER.info("Fetching macro indicators for run_date=%s", run_date)
         try:
-            macro_context = macro_service.fetch_macro_context(run_date=run_date)
+            macro_context, fetch_errors = macro_service.fetch_macro_context(run_date=run_date)
         except Exception as exc:
             LOGGER.warning("MacroPipeline: failed to fetch macro context: %s", exc)
             return {"status": "error", "error": str(exc)}
+
+        if fetch_errors:
+            existing_errors = self.storage.load_pipeline_errors(run_date)
+            self.storage.save_pipeline_errors(run_date, existing_errors + fetch_errors)
 
         context_dict = macro_context.model_dump()
 
