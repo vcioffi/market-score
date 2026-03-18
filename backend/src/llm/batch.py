@@ -143,20 +143,26 @@ class OpenAIBatchManager:
 
 
 class OpenAIDirectManager:
-    """Run synchronous chat completions for immediate, non-batch workflows."""
+    """Run synchronous chat completions against any OpenAI-compatible endpoint."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str | None, base_url: str | None = None, use_json_schema: bool = True):
         if OpenAI is None:
             raise RuntimeError(
                 "openai package is required for live direct mode. Install dependencies with: pip install -r requirements.txt"
             )
-        self.client = OpenAI(api_key=api_key)
+        # For local endpoints (e.g. Ollama) an API key is not required; use a placeholder.
+        effective_key = api_key or "local"
+        self.client = OpenAI(api_key=effective_key, base_url=base_url) if base_url else OpenAI(api_key=effective_key)
+        self.use_json_schema = use_json_schema
 
     @with_retry(attempts=3, min_wait_seconds=1.0, max_wait_seconds=8.0)
     def create_chat_completion(self, request: BatchRequest) -> dict:
-        # Use json_schema strict mode when a schema is provided for reliable structured output.
-        # Fall back to json_object for compatibility when no schema is given.
-        response_format = _build_response_format(request)
+        # Use json_schema strict mode only when the provider supports it (OpenAI, Groq, etc.).
+        # Fall back to json_object for providers that don't support strict schema (Ollama).
+        if self.use_json_schema:
+            response_format = _build_response_format(request)
+        else:
+            response_format = {"type": "json_object"}
         body: dict[str, Any] = {
             "model": request.model,
             "messages": [

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.config.settings import Settings
 from src.llm.pipeline import TickerLLMAnalysisEngine, TickerLLMInput
+from src.llm.static_engine import StaticAnalysisEngine
 from src.storage.json_store import JsonStorage
 from src.tickers.repository import TickerRepository
 from src.utils.logging import get_logger
@@ -14,7 +15,11 @@ class TickerAnalysisPipeline:
         self.settings = settings
         self.storage = storage
         self.repository = repository
-        self.engine = TickerLLMAnalysisEngine(settings)
+        if settings.analysis_mode == "static":
+            LOGGER.info("Using static analysis engine (no LLM)")
+            self.engine: TickerLLMAnalysisEngine | StaticAnalysisEngine = StaticAnalysisEngine()
+        else:
+            self.engine = TickerLLMAnalysisEngine(settings)
 
     def run(self, run_date: str, wait_for_batch: bool = False, symbols: list[str] | None = None) -> dict:
         profiles = self.repository.load_symbols(limit=self.settings.max_tickers_per_run)

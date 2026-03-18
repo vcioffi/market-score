@@ -37,11 +37,19 @@ def main() -> None:
         default=None,
         help="Parallel workers for OpenAI news research (default 1=sequential, suggested 5 for standard, 3 for deep-research)",
     )
-    parser.add_argument("--live", action="store_true", help="Disable dry-run mode (OpenAI enabled)")
+    parser.add_argument(
+        "--static",
+        action="store_true",
+        help=(
+            "Run static (no-LLM) analysis: fetches real market data and news, "
+            "computes all scores and narratives deterministically — zero API cost"
+        ),
+    )
+    parser.add_argument("--live", action="store_true", help="Disable dry-run mode (LLM enabled)")
     parser.add_argument(
         "--live-no-batch",
         action="store_true",
-        help="Disable dry-run and use synchronous OpenAI calls (no batch queue, immediate results)",
+        help="Disable dry-run and use synchronous LLM calls (no batch queue, immediate results)",
     )
     parser.add_argument(
         "--skip-news",
@@ -61,7 +69,10 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
-    if args.live_no_batch:
+    if args.static:
+        settings.dry_run = False
+        settings.analysis_mode = "static"
+    elif args.live_no_batch:
         settings.dry_run = False
         settings.openai_use_batch = False
     else:

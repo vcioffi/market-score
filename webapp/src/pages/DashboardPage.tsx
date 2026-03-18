@@ -6,8 +6,10 @@ import { LoadingState } from "../components/LoadingState";
 import { RankingTable } from "../components/RankingTable";
 import { ScoreCard } from "../components/ScoreCard";
 import { TickerSearch } from "../components/TickerSearch";
+import { Tooltip } from "../components/Tooltip";
 import { getMacroLatest, getTickers, getWeeklySummaryLatest } from "../services/api";
 import type { MacroAnalysis, TickerLight, WeeklySummary } from "../types/api";
+import { T } from "../utils/tooltips";
 
 function regimeBadgeClass(regime: string): string {
   if (regime === "risk-on") return "badge badge-positive";
@@ -28,24 +30,45 @@ function fmtVal(v: number | null | undefined, decimals = 2): string {
 function MacroPanel({ macro }: { macro: MacroAnalysis }) {
   const coreSymbols = ["^VIX", "^GSPC", "^IXIC", "^TNX", "DX-Y.NYB", "GC=F", "CL=F"];
   const coreIndicators = macro.indicators.filter((i) => coreSymbols.includes(i.symbol));
-
   const sectorEntries = Object.entries(macro.sector_performance).sort((a, b) => b[1] - a[1]);
 
   return (
     <section className="panel macro-panel">
       <div className="panel-header">
-        <h3>Macro Analysis</h3>
-        <span className={regimeBadgeClass(macro.macro_regime)}>{macro.macro_regime}</span>
+        <h3>Analisi Macro</h3>
+        <span className={regimeBadgeClass(macro.macro_regime)}>
+          <Tooltip text={T.macroRegime}>{macro.macro_regime}</Tooltip>
+        </span>
       </div>
 
       <div className="macro-scores-row">
-        <ScoreCard label="Macro Score" value={macro.macro_score.toFixed(1)} tone={macro.macro_score >= 55 ? "positive" : macro.macro_score >= 40 ? "neutral" : "warning"} />
-        <ScoreCard label="Breadth" value={macro.market_breadth} tone={macro.market_breadth === "expanding" ? "positive" : macro.market_breadth === "contracting" ? "warning" : "neutral"} />
+        <ScoreCard
+          label="Score Macro"
+          value={macro.macro_score.toFixed(1)}
+          tone={macro.macro_score >= 55 ? "positive" : macro.macro_score >= 40 ? "neutral" : "warning"}
+          tooltip={T.macroScore}
+        />
+        <ScoreCard
+          label="Ampiezza"
+          value={macro.market_breadth}
+          tone={macro.market_breadth === "expanding" ? "positive" : macro.market_breadth === "contracting" ? "warning" : "neutral"}
+          tooltip={T.breadth}
+        />
         {macro.vix_level != null && (
-          <ScoreCard label="VIX" value={macro.vix_level.toFixed(1)} tone={macro.vix_level < 15 ? "positive" : macro.vix_level < 25 ? "neutral" : "warning"} />
+          <ScoreCard
+            label="VIX"
+            value={macro.vix_level.toFixed(1)}
+            tone={macro.vix_level < 15 ? "positive" : macro.vix_level < 25 ? "neutral" : "warning"}
+            tooltip={T.vix}
+          />
         )}
         {macro.yield_curve_spread != null && (
-          <ScoreCard label="Yield Curve" value={`${macro.yield_curve_spread >= 0 ? "+" : ""}${macro.yield_curve_spread.toFixed(2)}pp`} tone={macro.yield_curve_spread >= 0.5 ? "positive" : macro.yield_curve_spread >= 0 ? "neutral" : "warning"} />
+          <ScoreCard
+            label="Curva Rendimenti"
+            value={`${macro.yield_curve_spread >= 0 ? "+" : ""}${macro.yield_curve_spread.toFixed(2)}pp`}
+            tone={macro.yield_curve_spread >= 0.5 ? "positive" : macro.yield_curve_spread >= 0 ? "neutral" : "warning"}
+            tooltip={T.yieldCurve}
+          />
         )}
       </div>
 
@@ -54,9 +77,9 @@ function MacroPanel({ macro }: { macro: MacroAnalysis }) {
           <table>
             <thead>
               <tr>
-                <th>Indicator</th>
-                <th>Value</th>
-                <th>1D</th>
+                <th>Indicatore</th>
+                <th>Valore</th>
+                <th>1G</th>
                 <th>1M</th>
                 <th>3M</th>
               </tr>
@@ -78,7 +101,7 @@ function MacroPanel({ macro }: { macro: MacroAnalysis }) {
 
       {sectorEntries.length > 0 && (
         <div className="macro-sector-perf">
-          <h4>Sector Performance (1M)</h4>
+          <h4>Performance Settoriale (1M)</h4>
           <div className="sector-perf-grid">
             {sectorEntries.map(([sector, perf]) => (
               <div key={sector} className={`sector-perf-item ${perf >= 0 ? "positive" : "negative"}`}>
@@ -92,13 +115,13 @@ function MacroPanel({ macro }: { macro: MacroAnalysis }) {
 
       <div className="macro-themes-risks">
         <div>
-          <h4>Key Themes</h4>
+          <h4>Temi Chiave</h4>
           <ul className="bullet-list">
             {macro.key_macro_themes.map((t) => <li key={t}>{t}</li>)}
           </ul>
         </div>
         <div>
-          <h4>Macro Risks</h4>
+          <h4>Rischi Macro</h4>
           <ul className="bullet-list">
             {macro.macro_risks.map((r) => <li key={r}>{r}</li>)}
           </ul>
@@ -107,7 +130,7 @@ function MacroPanel({ macro }: { macro: MacroAnalysis }) {
 
       {macro.macro_commentary && (
         <div className="macro-commentary">
-          <h4>Commentary</h4>
+          <h4>Commento</h4>
           <p className="muted">{macro.macro_commentary}</p>
         </div>
       )}
@@ -134,41 +157,30 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
       try {
         setLoading(true);
         const [weekly, tickerRes] = await Promise.all([getWeeklySummaryLatest(), getTickers()]);
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
         setSummary(weekly);
         setTickers(tickerRes.tickers);
         onRunDateChange(weekly.run_date);
-        // Macro is optional — don't fail the whole dashboard if not available
         try {
           const macroData = await getMacroLatest();
           if (mounted) setMacro(macroData);
         } catch {
-          // macro analysis not yet generated for this run
+          // analisi macro non ancora disponibile per questa esecuzione
         }
       } catch (loadError) {
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
         setError((loadError as Error).message);
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     }
 
     load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [onRunDateChange]);
 
   const sectors = useMemo(() => {
-    if (!summary) {
-      return ["All"];
-    }
+    if (!summary) return ["All"];
     const unique = Array.from(new Set(summary.ranking.map((item) => item.sector))).sort();
     return ["All", ...unique];
   }, [summary]);
@@ -176,26 +188,17 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
   const filteredTickers = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return tickers.filter((item) => {
-      if (!normalized) {
-        return true;
-      }
+      if (!normalized) return true;
       return (
-        item.symbol.toLowerCase().includes(normalized) || item.company_name.toLowerCase().includes(normalized)
+        item.symbol.toLowerCase().includes(normalized) ||
+        item.company_name.toLowerCase().includes(normalized)
       );
     });
   }, [query, tickers]);
 
-  if (loading) {
-    return <LoadingState text="Loading weekly ranking..." />;
-  }
-
-  if (error) {
-    return <div className="error-box">{error}</div>;
-  }
-
-  if (!summary) {
-    return <div className="error-box">No weekly summary available.</div>;
-  }
+  if (loading) return <LoadingState text="Caricamento classifica settimanale..." />;
+  if (error) return <div className="error-box">{error}</div>;
+  if (!summary) return <div className="error-box">Nessun riepilogo settimanale disponibile.</div>;
 
   const top1 = summary.ranking[0];
   const avgBenefit =
@@ -212,15 +215,15 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
     <div className="page-grid">
       <section className="hero">
         <div>
-          <p className="eyebrow">Weekly Snapshot</p>
-          <h2>{top1 ? `${top1.ticker} leads the ranking` : "Ranking ready"}</h2>
-          <p className="muted">Top themes and basket proposals are generated from quantitative and qualitative context.</p>
+          <p className="eyebrow">Panoramica Settimanale</p>
+          <h2>{top1 ? `${top1.ticker} guida la classifica` : "Classifica pronta"}</h2>
+          <p className="muted">Temi principali e portafogli consigliati generati da analisi quantitativa e qualitativa.</p>
         </div>
         <div className="hero-metrics">
           <ScoreCard label="Top Ticker" value={top1?.ticker ?? "-"} tone="positive" />
-          <ScoreCard label="Avg Benefit" value={avgBenefit.toFixed(1)} tone="positive" />
-          <ScoreCard label="Avg Risk" value={avgRisk.toFixed(1)} tone="warning" />
-          <ScoreCard label="Universe" value={String(summary.ranking.length)} tone="neutral" />
+          <ScoreCard label="Beneficio Medio" value={avgBenefit.toFixed(1)} tone="positive" tooltip={T.benefit} />
+          <ScoreCard label="Rischio Medio" value={avgRisk.toFixed(1)} tone="warning" tooltip={T.risk} />
+          <ScoreCard label="Universo" value={String(summary.ranking.length)} tone="neutral" />
         </div>
       </section>
 
@@ -228,9 +231,7 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
         <TickerSearch query={query} onChange={setQuery} />
         <select value={sectorFilter} onChange={(event) => setSectorFilter(event.target.value)}>
           {sectors.map((sector) => (
-            <option key={sector} value={sector}>
-              {sector}
-            </option>
+            <option key={sector} value={sector}>{sector}</option>
           ))}
         </select>
       </section>
@@ -242,7 +243,7 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
 
         <section className="panel">
           <div className="panel-header">
-            <h3>Macro Themes</h3>
+            <h3>Temi Macro</h3>
           </div>
           <ul className="bullet-list">
             {summary.macro_themes.map((theme) => (
@@ -253,13 +254,11 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
 
         <section className="panel">
           <div className="panel-header">
-            <h3>Watchlist</h3>
+            <h3>Lista di Controllo</h3>
           </div>
           <div className="chip-row">
             {summary.watchlist.map((ticker) => (
-              <Link key={ticker} className="chip" to={`/ticker/${ticker}`}>
-                {ticker}
-              </Link>
+              <Link key={ticker} className="chip" to={`/ticker/${ticker}`}>{ticker}</Link>
             ))}
           </div>
         </section>
@@ -269,14 +268,14 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
 
       <section className="panel">
         <div className="panel-header">
-          <h3>Sector Clusters</h3>
+          <h3>Cluster Settoriali</h3>
         </div>
         <div className="cluster-grid">
           {sectorClusters.map((cluster) => (
             <article className="cluster-card" key={cluster.sector}>
               <p className="ticker-symbol">{cluster.sector}</p>
-              <p className="muted small">Avg score: {cluster.average_composite_score.toFixed(2)}</p>
-              <p className="muted small">Avg risk: {cluster.average_risk_score.toFixed(2)}</p>
+              <p className="muted small">Score medio: {cluster.average_composite_score.toFixed(2)}</p>
+              <p className="muted small">Rischio medio: {cluster.average_risk_score.toFixed(2)}</p>
               <p className="small">{cluster.symbols.join(", ")}</p>
             </article>
           ))}
@@ -285,7 +284,7 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
 
       <section className="panel details-grid">
         <article>
-          <h3>Scenario Signals</h3>
+          <h3>Segnali di Scenario</h3>
           <ul className="bullet-list">
             {scenarioSignals.map((signal) => (
               <li key={signal}>{signal}</li>
@@ -293,13 +292,13 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
           </ul>
         </article>
         <article>
-          <h3>Competitive Relations</h3>
+          <h3>Relazioni Competitive</h3>
           <ul className="bullet-list">
             {relationships.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <h4>Supply Chain Links</h4>
+          <h4>Catene di Fornitura</h4>
           <ul className="bullet-list">
             {supplyChainLinks.map((item) => (
               <li key={item}>{item}</li>
@@ -310,8 +309,8 @@ export function DashboardPage({ onRunDateChange }: DashboardPageProps) {
 
       <section className="panel">
         <div className="panel-header">
-          <h3>Ticker Explorer</h3>
-          <span>{filteredTickers.length} results</span>
+          <h3>Esplora Ticker</h3>
+          <span>{filteredTickers.length} risultati</span>
         </div>
         <div className="ticker-grid">
           {filteredTickers.slice(0, 30).map((item) => (

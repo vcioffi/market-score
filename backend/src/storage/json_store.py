@@ -110,8 +110,9 @@ class JsonStorage:
         run_dir = self.outputs_dir / run_date
         if not run_dir.exists():
             return []
+        _EXCLUDED = {"weekly_summary.json", "macro_analysis.json"}
         return sorted(
-            [item for item in run_dir.glob("*.json") if item.name.lower() != "weekly_summary.json"]
+            [item for item in run_dir.glob("*.json") if item.name.lower() not in _EXCLUDED]
         )
 
     def save_macro_analysis(self, run_date: str, payload: dict) -> Path:

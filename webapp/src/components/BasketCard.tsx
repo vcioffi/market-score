@@ -9,7 +9,7 @@ export function BasketCard({ items, rationale }: BasketCardProps) {
   return (
     <section className="panel basket-panel">
       <div className="panel-header">
-        <h3>Best Basket</h3>
+        <h3>Portafoglio Consigliato</h3>
       </div>
       <p className="basket-rationale">{rationale}</p>
       <ul className="basket-list">

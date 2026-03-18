@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     dry_run: bool = True
+    # Analysis mode:
+    #   "llm"    — use configured LLM backend (OpenAI, Ollama, Groq, etc.)
+    #   "static" — deterministic rule-based analysis; real market data + news,
+    #              zero LLM calls (free and offline-friendly)
+    analysis_mode: str = "llm"
     max_tickers_per_run: int = 100
 
     benchmark_symbol: str = "SPY"
@@ -33,10 +38,22 @@ class Settings(BaseSettings):
     news_window_days: int = 30
     news_summary_char_limit: int = 200
 
+    # Generic LLM backend (OpenAI-compatible API)
+    # Set llm_base_url to use a free/local provider:
+    #   Ollama (local):  http://localhost:11434/v1
+    #   Groq (free):     https://api.groq.com/openai/v1
+    #   Gemini (free):   https://generativelanguage.googleapis.com/v1beta/openai
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
+    llm_model: str | None = None  # overrides openai_model_ticker/weekly when set
+    # Set to false for providers that don't support strict JSON schema (e.g. Ollama)
+    llm_use_json_schema: bool = True
+
+    # Legacy OpenAI settings (kept for backward compatibility)
     openai_api_key: str | None = None
-    openai_model_ticker: str = "gpt-5-mini"
-    openai_model_weekly: str = "gpt-5-mini"
-    openai_model_news: str = "gpt-5-mini"
+    openai_model_ticker: str = "gpt-4o-mini"
+    openai_model_weekly: str = "gpt-4o-mini"
+    openai_model_news: str = "gpt-4o-mini"
     openai_use_batch: bool = True
     openai_completion_window: str = "24h"
     openai_poll_interval_seconds: int = 30
@@ -49,6 +66,29 @@ class Settings(BaseSettings):
     # Parallel workers for OpenAI news research (1 = sequential, 5-10 = parallel)
     # Use >1 only with OpenAI news research enabled; each worker consumes API rate limit.
     openai_news_workers: int = 1
+
+    @property
+    def effective_llm_api_key(self) -> str | None:
+        """API key for the active LLM backend."""
+        return self.llm_api_key or self.openai_api_key
+
+    @property
+    def effective_llm_base_url(self) -> str | None:
+        """Base URL for the active LLM backend (None = OpenAI default)."""
+        return self.llm_base_url
+
+    @property
+    def effective_llm_model_ticker(self) -> str:
+        return self.llm_model or self.openai_model_ticker
+
+    @property
+    def effective_llm_model_weekly(self) -> str:
+        return self.llm_model or self.openai_model_weekly
+
+    @property
+    def llm_live_mode(self) -> bool:
+        """True when a real LLM backend is configured (not dry-run)."""
+        return bool(self.llm_base_url or self.effective_llm_api_key)
 
     allow_mock_news: bool = True
 

@@ -133,7 +133,7 @@ class TickerLLMAnalysisEngine:
         return [
             BatchRequest(
                 custom_id=f"{run_date}:{entry.profile.symbol}",
-                model=self.settings.openai_model_ticker,
+                model=self.settings.effective_llm_model_ticker,
                 system_prompt=build_ticker_system_prompt(),
                 user_prompt=build_ticker_user_prompt(entry.to_prompt_payload()),
                 json_schema_name="ticker_analysis",
@@ -188,7 +188,11 @@ class TickerLLMAnalysisEngine:
         on_ticker_done: object = None,
     ) -> tuple[dict[str, TickerAnalysis], dict]:
         try:
-            manager = OpenAIDirectManager(api_key=str(self.settings.openai_api_key))
+            manager = OpenAIDirectManager(
+                api_key=self.settings.effective_llm_api_key,
+                base_url=self.settings.effective_llm_base_url,
+                use_json_schema=self.settings.llm_use_json_schema,
+            )
         except Exception as exc:
             LOGGER.warning("OpenAI direct mode init failed, falling back: %s", exc)
             return fallback_results, {"mode": "fallback", "reason": "openai_direct_init_failed", "error": str(exc)}
@@ -211,7 +215,7 @@ class TickerLLMAnalysisEngine:
             symbol = entry.profile.symbol.upper()
             request = BatchRequest(
                 custom_id=symbol,
-                model=self.settings.openai_model_ticker,
+                model=self.settings.effective_llm_model_ticker,
                 system_prompt=build_ticker_system_prompt(),
                 user_prompt=build_ticker_user_prompt(entry.to_prompt_payload()),
                 json_schema_name="ticker_analysis",
@@ -406,12 +410,14 @@ class TickerLLMAnalysisEngine:
 
         fallback_results = self._fallback_map(inputs)
 
-        if self.settings.dry_run or not self.settings.openai_api_key:
-            LOGGER.info("Using deterministic fallback analysis (dry-run or missing OpenAI credentials)")
+        if self.settings.dry_run or not self.settings.llm_live_mode:
+            LOGGER.info("Using deterministic fallback analysis (dry-run or no LLM backend configured)")
             return fallback_results, {"mode": "fallback"}
 
-        if not self.settings.openai_use_batch:
-            LOGGER.info("Using OpenAI direct mode (no batch queue)")
+        # Batch mode only works with the real OpenAI API; force direct mode for custom endpoints.
+        use_direct = not self.settings.openai_use_batch or bool(self.settings.effective_llm_base_url)
+        if use_direct:
+            LOGGER.info("Using LLM direct mode")
             return self._run_direct(inputs=inputs, fallback_results=fallback_results, on_ticker_done=on_ticker_done)
 
         return self._run_batch(
@@ -459,11 +465,15 @@ class WeeklyLLMEngine:
         deterministic_summary: dict,
     ) -> tuple[str | None, dict]:
         try:
-            manager = OpenAIDirectManager(api_key=str(self.settings.openai_api_key))
+            manager = OpenAIDirectManager(
+                api_key=self.settings.effective_llm_api_key,
+                base_url=self.settings.effective_llm_base_url,
+                use_json_schema=self.settings.llm_use_json_schema,
+            )
             compact_payload = self._compact_weekly_payload(deterministic_summary)
             request = BatchRequest(
                 custom_id=f"{run_date}:weekly-summary",
-                model=self.settings.openai_model_weekly,
+                model=self.settings.effective_llm_model_weekly,
                 system_prompt=build_weekly_system_prompt(),
                 user_prompt=build_weekly_commentary_prompt(compact_payload),
                 json_schema_name="weekly_commentary",
@@ -488,22 +498,23 @@ class WeeklyLLMEngine:
         artifacts_dir: Path,
         wait_for_batch: bool = True,
     ) -> tuple[str | None, dict]:
-        if self.settings.dry_run or not self.settings.openai_api_key:
+        if self.settings.dry_run or not self.settings.llm_live_mode:
             return None, {"mode": "skipped"}
 
-        if not self.settings.openai_use_batch:
+        use_direct = not self.settings.openai_use_batch or bool(self.settings.effective_llm_base_url)
+        if use_direct:
             return self._generate_direct_commentary(run_date=run_date, deterministic_summary=deterministic_summary)
 
         try:
             manager = OpenAIBatchManager(
-                api_key=str(self.settings.openai_api_key),
+                api_key=str(self.settings.effective_llm_api_key),
                 completion_window=self.settings.openai_completion_window,
             )
 
             compact_payload = self._compact_weekly_payload(deterministic_summary)
             request = BatchRequest(
                 custom_id=f"{run_date}:weekly-summary",
-                model=self.settings.openai_model_weekly,
+                model=self.settings.effective_llm_model_weekly,
                 system_prompt=build_weekly_system_prompt(),
                 user_prompt=build_weekly_commentary_prompt(compact_payload),
                 json_schema_name="weekly_commentary",
@@ -719,22 +730,26 @@ class MacroLLMEngine:
         artifacts_dir: Path,
     ) -> tuple[MacroAnalysis, dict]:
         """Generate macro analysis. Returns (MacroAnalysis, metadata_dict)."""
-        if self.settings.dry_run or not self.settings.openai_api_key:
+        if self.settings.dry_run or not self.settings.llm_live_mode:
             result = self._deterministic_fallback({**macro_context, "run_date": run_date})
             return result, {"mode": "fallback"}
 
         try:
-            manager = OpenAIDirectManager(api_key=str(self.settings.openai_api_key))
+            manager = OpenAIDirectManager(
+                api_key=self.settings.effective_llm_api_key,
+                base_url=self.settings.effective_llm_base_url,
+                use_json_schema=self.settings.llm_use_json_schema,
+            )
         except Exception as exc:
-            LOGGER.warning("MacroLLMEngine: OpenAI init failed, using fallback: %s", exc)
+            LOGGER.warning("MacroLLMEngine: LLM init failed, using fallback: %s", exc)
             result = self._deterministic_fallback({**macro_context, "run_date": run_date})
-            return result, {"mode": "fallback", "reason": "openai_init_failed", "error": str(exc)}
+            return result, {"mode": "fallback", "reason": "llm_init_failed", "error": str(exc)}
 
         schema = MacroAnalysisLLM.model_json_schema()
         compact_payload = self._compact_macro_payload(macro_context)
         request = BatchRequest(
             custom_id=f"{run_date}:macro-analysis",
-            model=self.settings.openai_model_weekly,
+            model=self.settings.effective_llm_model_weekly,
             system_prompt=build_macro_system_prompt(),
             user_prompt=build_macro_user_prompt(compact_payload),
             json_schema_name="macro_analysis",

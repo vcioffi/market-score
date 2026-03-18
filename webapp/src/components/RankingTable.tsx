@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import type { RankingEntry } from "../types/api";
+import { Tooltip } from "./Tooltip";
+import { T } from "../utils/tooltips";
 
 interface RankingTableProps {
   items: RankingEntry[];
@@ -10,17 +12,15 @@ interface RankingTableProps {
 
 export function RankingTable({ items, sectorFilter }: RankingTableProps) {
   const filtered = useMemo(() => {
-    if (!sectorFilter || sectorFilter === "All") {
-      return items;
-    }
+    if (!sectorFilter || sectorFilter === "All") return items;
     return items.filter((item) => item.sector === sectorFilter);
   }, [items, sectorFilter]);
 
   return (
     <section className="panel">
       <div className="panel-header">
-        <h3>Weekly Ranking</h3>
-        <span>{filtered.length} tickers</span>
+        <h3>Classifica Settimanale</h3>
+        <span>{filtered.length} ticker</span>
       </div>
       <div className="table-wrap">
         <table>
@@ -28,12 +28,12 @@ export function RankingTable({ items, sectorFilter }: RankingTableProps) {
             <tr>
               <th>#</th>
               <th>Ticker</th>
-              <th>Company</th>
-              <th>Sector</th>
-              <th>Benefit</th>
-              <th>Risk</th>
-              <th>Confidence</th>
-              <th>Composite</th>
+              <th>Azienda</th>
+              <th>Settore</th>
+              <th><Tooltip text={T.benefit}>Beneficio</Tooltip></th>
+              <th><Tooltip text={T.risk}>Rischio</Tooltip></th>
+              <th><Tooltip text={T.confidence}>Fiducia</Tooltip></th>
+              <th><Tooltip text={T.composite}>Composito</Tooltip></th>
             </tr>
           </thead>
           <tbody>
